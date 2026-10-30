@@ -11,6 +11,7 @@ For datastore_search: result = {"records": [...], "total": N}
 
 from __future__ import annotations
 
+import re
 import zipfile
 from io import BytesIO
 from typing import Any
@@ -23,10 +24,14 @@ from mcp_canada.modules.toronto.constants import (
     CACHE_TTL_GTFS,
     CACHE_TTL_META,
     CACHE_TTL_SEARCH,
+    DEFAULT_PROFILE_YEAR,
     GTFS_DATASET_ID,
     MAX_DESCRIPTION_CHARS,
     MAX_RESOURCES,
-    NEIGHBOURHOOD_PROFILES_RESOURCE_ID,
+    NEIGHBOURHOOD_PROFILE_YEARS,
+    NEIGHBOURHOOD_PROFILES_DATASET_ID,
+    PROFILE_NUMBERS_YEAR,
+    PROFILE_PAGE_SIZE,
     RATE_GROUP,
     RATE_LIMIT,
     RENTSAFE_EVAL_RESOURCE_ID,
@@ -36,7 +41,7 @@ from mcp_canada.modules.toronto.constants import (
 from mcp_canada.shared.cache import cached_fetch
 from mcp_canada.shared.parsers import _parse_csv
 from mcp_canada.shared.rate_limiter import get_limiter
-from mcp_canada.shared.errors import UpstreamData
+from mcp_canada.shared.errors import InvalidInput, UpstreamData
 
 
 # ---------------------------------------------------------------------------
@@ -395,56 +400,278 @@ async def fetch_datastore_records(
 # ---------------------------------------------------------------------------
 
 
+async def _resolve_profile_resource_id(year: int) -> str:
+    """Find the current datastore resource id of one census year's profile.
+
+    Looked up by resource name in package_show, never a pinned id: Toronto
+    republishes files under new resource ids (see GTFS_DATASET_ID).
+
+    Args:
+        year: Census year, a key of NEIGHBOURHOOD_PROFILE_YEARS.
+
+    Returns:
+        The datastore resource id for that year's profile table.
+    """
+    resource_name = NEIGHBOURHOOD_PROFILE_YEARS[year]["resource_name"]
+    package, _ = await _api_get(
+        "action/package_show",
+        {"id": NEIGHBOURHOOD_PROFILES_DATASET_ID},
+        CACHE_TTL_SEARCH,
+    )
+    for resource in package.get("resources") or []:
+        # Toronto returns datastore_active as both True and "True".
+        active = str(resource.get("datastore_active")).lower() == "true"
+        if resource.get("name") == resource_name and active and resource.get("id"):
+            return str(resource["id"])
+    raise UpstreamData(
+        f"Neighbourhood Profiles has no datastore resource named {resource_name!r}"
+    )
+
+
+async def fetch_profile_table(
+    year: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Fetch every row of one census year's neighbourhood profile table.
+
+    Reads the datastore page by page without a ``q`` filter, so nothing is left
+    out; CKAN's full-text ``q`` missed rows such as "Population, 2016".
+
+    Args:
+        year: Census year (2006, 2011 or 2016).
+
+    Returns:
+        (list of all profile row dicts, was_cached) — was_cached is True only
+        if every page came from cache.
+
+    Raises:
+        InvalidInput: the year has no profile table.
+        UpstreamData: the table is missing from the dataset or has no rows.
+    """
+    if year not in NEIGHBOURHOOD_PROFILE_YEARS:
+        raise InvalidInput(
+            f"year must be one of {sorted(NEIGHBOURHOOD_PROFILE_YEARS)}, got {year}"
+        )
+    resource_id = await _resolve_profile_resource_id(year)
+
+    rows: list[dict[str, Any]] = []
+    all_cached = True
+    offset = 0
+    while True:
+        page, was_cached = await fetch_datastore_records(
+            resource_id=resource_id,
+            limit=PROFILE_PAGE_SIZE,
+            offset=offset,
+            cache_ttl=CACHE_TTL_DATA,
+        )
+        all_cached = all_cached and was_cached
+        rows.extend(page)
+        if len(page) < PROFILE_PAGE_SIZE:
+            break
+        offset += PROFILE_PAGE_SIZE
+
+    if not rows:
+        raise UpstreamData(f"Neighbourhood profile table for {year} has no rows")
+    return rows, all_cached
+
+
+# Columns of a profile table that are not neighbourhoods. Every other column
+# is one neighbourhood, named as in the City's 140-neighbourhood model.
+_PROFILE_META_COLUMNS = frozenset(
+    {
+        "_id",
+        "rank",
+        "Category",
+        "Topic",
+        "Data Source",
+        "Characteristic",
+        "Attribute",
+        "City of Toronto",
+    }
+)
+_NEIGHBOURHOOD_NUMBER_LABEL = "neighbourhood number"
+
+
+def _normalize_text(text: Any) -> str:
+    """Lower-case, turn punctuation into spaces and collapse whitespace."""
+    return " ".join(re.sub(r"[^\w$%]+", " ", str(text or "")).lower().split())
+
+
+def _label_matches(label: Any, query: str) -> bool:
+    """True when every word of the query appears in the row label.
+
+    Words match as substrings in any order, ignoring case and punctuation, so
+    "population" matches "Population, 2016" and "household income" matches
+    "Median total income of households in 2015 ($)".
+    """
+    text = _normalize_text(label)
+    return all(word in text for word in _normalize_text(query).split())
+
+
+def _neighbourhood_columns(row: dict[str, Any]) -> list[str]:
+    """Neighbourhood column names of a profile row, in table order."""
+    return [col for col in row if col not in _PROFILE_META_COLUMNS]
+
+
+async def _fetch_neighbourhood_numbers() -> tuple[dict[str, str], bool]:
+    """Map each neighbourhood name to its City neighbourhood number.
+
+    Only the 2016 table has a "Neighbourhood Number" row. 2006 and 2011 use the
+    same 140 names, so their numbers are taken from 2016.
+
+    Returns:
+        (dict of neighbourhood name to number, was_cached)
+    """
+    rows, was_cached = await fetch_profile_table(PROFILE_NUMBERS_YEAR)
+    label_column = NEIGHBOURHOOD_PROFILE_YEARS[PROFILE_NUMBERS_YEAR]["label_column"]
+    for row in rows:
+        if _normalize_text(row.get(label_column)) == _NEIGHBOURHOOD_NUMBER_LABEL:
+            numbers = {
+                col: str(row[col]).strip()
+                for col in _neighbourhood_columns(rows[0])
+                if row.get(col) not in (None, "")
+            }
+            return numbers, was_cached
+    return {}, was_cached
+
+
+def _resolve_neighbourhood(columns: list[str], numbers: dict[str, str], query: str) -> str:
+    """Resolve a neighbourhood name, partial name or number to its column name.
+
+    Args:
+        columns: Neighbourhood column names of the profile table.
+        numbers: Neighbourhood name to City number, from _fetch_neighbourhood_numbers.
+        query: Full name ("Annex"), unique partial name ("Rosedale") or number ("95").
+
+    Returns:
+        The matching neighbourhood column name.
+
+    Raises:
+        InvalidInput: nothing matches, or a partial name matches several.
+    """
+    wanted = _normalize_text(query)
+    if not wanted:
+        raise InvalidInput("neighbourhood must not be empty")
+
+    if wanted.isdigit():
+        for col, number in numbers.items():
+            if col in columns and number.lstrip("0") == wanted.lstrip("0"):
+                return col
+
+    exact = [col for col in columns if _normalize_text(col) == wanted]
+    if exact:
+        return exact[0]
+
+    partial = [col for col in columns if wanted in _normalize_text(col)]
+    if len(partial) == 1:
+        return partial[0]
+    if partial:
+        raise InvalidInput(
+            f"neighbourhood {query!r} matches several neighbourhoods: "
+            f"{', '.join(partial)}. Use the full name or the neighbourhood number."
+        )
+    raise InvalidInput(
+        f"Unknown neighbourhood {query!r}. Use a name or number from "
+        "data://toronto/neighbourhood-list."
+    )
+
+
+def _shape_profile_row(
+    row: dict[str, Any],
+    year: int,
+    label_column: str,
+    neighbourhoods: list[str],
+) -> dict[str, Any]:
+    """Shape one profile row with the same keys for every census year.
+
+    Drops datastore bookkeeping (_id, rank), renames the year's label column to
+    "Characteristic", and keeps only the given neighbourhood columns.
+    """
+    all_neighbourhoods = set(_neighbourhood_columns(row))
+    shaped: dict[str, Any] = {"year": year}
+    for key, value in row.items():
+        if key in ("_id", "rank") or key in all_neighbourhoods:
+            continue
+        if key == label_column:
+            shaped["Characteristic"] = str(value or "").strip()
+        else:
+            shaped[key] = value
+    for col in neighbourhoods:
+        shaped[col] = row.get(col)
+    return shaped
+
+
 async def fetch_neighbourhood_profile(
     neighbourhood: str | None = None,
     characteristic: str | None = None,
     limit: int = 100,
+    year: int = DEFAULT_PROFILE_YEAR,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """Fetch neighbourhood profile records from the 2016 Census datastore resource.
+    """Fetch neighbourhood profile rows for one census year.
 
-    The neighbourhood profile resource uses an indicator-per-row model: each row
-    is one Characteristic, with neighbourhood names as column headers. Use the
-    'Characteristic' column to filter indicators, or neighbourhood name columns
-    to look up specific area data.
+    The table uses an indicator-per-row model: each row is one characteristic,
+    with one column per neighbourhood. Matching happens here on the whole table,
+    not through CKAN's full-text ``q``, which missed rows such as "Population, 2016".
 
     Args:
-        neighbourhood: Optional neighbourhood name (column header) to include in response.
-            NOTE: All neighbourhood columns are always returned; this param is informational.
-        characteristic: Optional substring to filter rows by 'Characteristic' column.
-        limit: Maximum number of records (default: 100).
+        neighbourhood: Optional full name, unique partial name or City number.
+            When given, only that neighbourhood's column is returned.
+        characteristic: Optional words that must all appear in the characteristic.
+        limit: Maximum number of characteristic rows to return (default: 100).
+        year: Census year (2006, 2011 or 2016; default: 2016).
 
     Returns:
         (list of profile row dicts, was_cached)
+
+    Raises:
+        InvalidInput: the year has no profile table, or the neighbourhood is
+            unknown or ambiguous.
     """
-    return await fetch_datastore_records(
-        resource_id=NEIGHBOURHOOD_PROFILES_RESOURCE_ID,
-        q=characteristic,
-        limit=limit,
-        cache_ttl=CACHE_TTL_DATA,
-    )
+    rows, was_cached = await fetch_profile_table(year)
+    label_column = NEIGHBOURHOOD_PROFILE_YEARS[year]["label_column"]
+    columns = _neighbourhood_columns(rows[0])
+
+    if neighbourhood:
+        numbers, numbers_cached = await _fetch_neighbourhood_numbers()
+        columns = [_resolve_neighbourhood(columns, numbers, neighbourhood)]
+        was_cached = was_cached and numbers_cached
+
+    matched = [
+        row
+        for row in rows
+        if not characteristic or _label_matches(row.get(label_column), characteristic)
+    ]
+    return [
+        _shape_profile_row(row, year, label_column, columns) for row in matched[: max(limit, 0)]
+    ], was_cached
 
 
 async def fetch_neighbourhood_comparison(
     characteristic: str,
     limit: int = 10,
+    year: int = DEFAULT_PROFILE_YEAR,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """Fetch neighbourhood profile rows for a specific Characteristic.
+    """Fetch the profile rows for a characteristic, with every neighbourhood's value.
 
-    Returns the row(s) matching the given Characteristic value, which contains
-    all neighbourhood values as columns — enabling cross-neighbourhood comparison.
+    Each matching row holds all 140 neighbourhoods as columns, enabling
+    cross-neighbourhood comparison.
 
     Args:
-        characteristic: Exact or partial Characteristic string to search for.
+        characteristic: Words that must all appear in the characteristic.
         limit: Maximum number of matching rows to return (default: 10).
+        year: Census year (2006, 2011 or 2016; default: 2016).
 
     Returns:
         (list of profile row dicts, was_cached)
+
+    Raises:
+        InvalidInput: characteristic is empty, or the year has no profile table.
     """
-    return await fetch_datastore_records(
-        resource_id=NEIGHBOURHOOD_PROFILES_RESOURCE_ID,
-        q=characteristic,
+    if not _normalize_text(characteristic):
+        raise InvalidInput("characteristic must not be empty")
+    return await fetch_neighbourhood_profile(
+        characteristic=characteristic,
         limit=limit,
-        cache_ttl=CACHE_TTL_DATA,
+        year=year,
     )
 
 

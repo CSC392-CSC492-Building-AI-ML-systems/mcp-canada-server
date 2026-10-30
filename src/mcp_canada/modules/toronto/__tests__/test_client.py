@@ -505,37 +505,255 @@ class TestFetchDatastoreRecords:
 # ---------------------------------------------------------------------------
 
 
-class TestFetchNeighbourhoodProfile:
-    @pytest.mark.asyncio
-    async def test_returns_records(self) -> None:
-        """fetch_neighbourhood_profile returns records from datastore_search."""
-        from mcp_canada.modules.toronto.client import fetch_neighbourhood_profile
+# Small stand-ins for the City's profile tables: 2016 labels rows with
+# "Characteristic" and has a "Neighbourhood Number" row; 2006/2011 use "Attribute".
+_PROFILE_2016 = [
+    {"_id": 1, "Category": "Neighbourhood Information", "Topic": "Neighbourhood Information",
+     "Data Source": "City of Toronto", "Characteristic": "Neighbourhood Number",
+     "City of Toronto": None, "Annex": "95", "Rosedale-Moore Park": "98",
+     "Moss Park": "73"},
+    {"_id": 2, "Category": "Population", "Topic": "Population and dwellings",
+     "Data Source": "Census Profile 98-316-X2016001", "Characteristic": "Population, 2016",
+     "City of Toronto": "2,731,571", "Annex": "30,526", "Rosedale-Moore Park": "20,923",
+     "Moss Park": "20,506"},
+    {"_id": 3, "Category": "Income", "Topic": "Income of households in 2015",
+     "Data Source": "Census Profile 98-316-X2016001",
+     "Characteristic": "      Median total income of households in 2015 ($)",
+     "City of Toronto": "65,829", "Annex": None, "Rosedale-Moore Park": None,
+     "Moss Park": None},
+]
+_PROFILE_2011 = [
+    {"_id": 1, "Category": "Population", "Topic": "Population and dwellings",
+     "Attribute": "Population, 2011", "City of Toronto": "2,615,060", "Annex": "29,177",
+     "Rosedale-Moore Park": "20,631", "Moss Park": "14,873"},
+]
 
-        with patch(
-            "mcp_canada.modules.toronto.client.fetch_datastore_records",
-            new_callable=AsyncMock,
-            return_value=([{"Characteristic": "Total population", "City of Toronto": "2731571"}], False),
+
+def _fake_profile_table(year: int) -> tuple[list[dict[str, Any]], bool]:
+    return ({2016: _PROFILE_2016, 2011: _PROFILE_2011}[year], True)
+
+
+class TestFetchProfileTable:
+    @pytest.mark.asyncio
+    async def test_reads_pages_until_short_page(self) -> None:
+        """fetch_profile_table keeps reading until a page is shorter than the page size."""
+        from mcp_canada.modules.toronto.client import fetch_profile_table
+
+        pages = [([{"_id": 1}, {"_id": 2}], True), ([{"_id": 3}], True)]
+        with (
+            patch("mcp_canada.modules.toronto.client.PROFILE_PAGE_SIZE", 2),
+            patch(
+                "mcp_canada.modules.toronto.client._resolve_profile_resource_id",
+                new=AsyncMock(return_value="res-2016"),
+            ),
+            patch(
+                "mcp_canada.modules.toronto.client.fetch_datastore_records",
+                new=AsyncMock(side_effect=pages),
+            ) as mock_fetch,
         ):
-            results, was_cached = await fetch_neighbourhood_profile()
+            rows, was_cached = await fetch_profile_table(2016)
 
-        assert isinstance(results, list)
-        assert len(results) >= 1
+        assert [r["_id"] for r in rows] == [1, 2, 3]
+        assert was_cached is True
+        assert [c.kwargs["offset"] for c in mock_fetch.call_args_list] == [0, 2]
+        assert all("q" not in c.kwargs for c in mock_fetch.call_args_list)
 
     @pytest.mark.asyncio
-    async def test_filters_by_characteristic(self) -> None:
-        """fetch_neighbourhood_profile with characteristic passes q param."""
+    async def test_rejects_unknown_year(self) -> None:
+        """fetch_profile_table raises InvalidInput for a year without a table."""
+        from mcp_canada.modules.toronto.client import fetch_profile_table
+        from mcp_canada.shared.errors import InvalidInput
+
+        with pytest.raises(InvalidInput):
+            await fetch_profile_table(2021)
+
+    @pytest.mark.asyncio
+    async def test_empty_table_raises(self) -> None:
+        """fetch_profile_table raises UpstreamData when the table has no rows."""
+        from mcp_canada.modules.toronto.client import fetch_profile_table
+        from mcp_canada.shared.errors import UpstreamData
+
+        with (
+            patch(
+                "mcp_canada.modules.toronto.client._resolve_profile_resource_id",
+                new=AsyncMock(return_value="res-2016"),
+            ),
+            patch(
+                "mcp_canada.modules.toronto.client.fetch_datastore_records",
+                new=AsyncMock(return_value=([], False)),
+            ),
+            pytest.raises(UpstreamData),
+        ):
+            await fetch_profile_table(2016)
+
+    @pytest.mark.asyncio
+    async def test_resolves_resource_by_name(self) -> None:
+        """_resolve_profile_resource_id picks the datastore resource with the year's name."""
+        from mcp_canada.modules.toronto.client import _resolve_profile_resource_id
+
+        package = {
+            "resources": [
+                {"id": "csv-2011", "name": "neighbourhood-profiles-2011-140-model",
+                 "datastore_active": False},
+                {"id": "ds-2011", "name": "neighbourhood-profiles-2011-140-model",
+                 "datastore_active": "True"},
+            ]
+        }
+        with patch(
+            "mcp_canada.modules.toronto.client._api_get",
+            new=AsyncMock(return_value=(package, False)),
+        ):
+            assert await _resolve_profile_resource_id(2011) == "ds-2011"
+
+    @pytest.mark.asyncio
+    async def test_missing_resource_raises(self) -> None:
+        """_resolve_profile_resource_id raises UpstreamData when no resource matches."""
+        from mcp_canada.modules.toronto.client import _resolve_profile_resource_id
+        from mcp_canada.shared.errors import UpstreamData
+
+        with (
+            patch(
+                "mcp_canada.modules.toronto.client._api_get",
+                new=AsyncMock(return_value=({"resources": []}, False)),
+            ),
+            pytest.raises(UpstreamData),
+        ):
+            await _resolve_profile_resource_id(2016)
+
+
+class TestFetchNeighbourhoodProfile:
+    @pytest.fixture(autouse=True)
+    def _tables(self):
+        with patch(
+            "mcp_canada.modules.toronto.client.fetch_profile_table",
+            new=AsyncMock(side_effect=_fake_profile_table),
+        ) as mock_table:
+            yield mock_table
+
+    @pytest.mark.asyncio
+    async def test_population_matches(self) -> None:
+        """Regression: "population" finds "Population, 2016" (CKAN q returned 0 rows)."""
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_profile
+
+        rows, was_cached = await fetch_neighbourhood_profile(characteristic="population")
+
+        assert [r["Characteristic"] for r in rows] == ["Population, 2016"]
+        assert rows[0]["year"] == 2016
+        assert rows[0]["Annex"] == "30,526"
+        assert "_id" not in rows[0]
+        assert was_cached is True
+
+    @pytest.mark.asyncio
+    async def test_words_match_in_any_order(self) -> None:
+        """Every word must appear, in any order, ignoring case and punctuation."""
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_profile
+
+        rows, _ = await fetch_neighbourhood_profile(characteristic="household income median")
+        assert [r["Characteristic"] for r in rows] == [
+            "Median total income of households in 2015 ($)"
+        ]
+
+        rows, _ = await fetch_neighbourhood_profile(characteristic="population rent")
+        assert rows == []
+
+    @pytest.mark.asyncio
+    async def test_neighbourhood_filter_keeps_one_column(self) -> None:
+        """A neighbourhood keeps only its own column next to the city-wide value."""
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_profile
+
+        rows, _ = await fetch_neighbourhood_profile(
+            neighbourhood="rosedale", characteristic="population"
+        )
+
+        assert rows == [
+            {
+                "year": 2016,
+                "Category": "Population",
+                "Topic": "Population and dwellings",
+                "Data Source": "Census Profile 98-316-X2016001",
+                "Characteristic": "Population, 2016",
+                "City of Toronto": "2,731,571",
+                "Rosedale-Moore Park": "20,923",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_older_year_uses_attribute_and_2016_numbers(self) -> None:
+        """2011 rows are labelled Attribute; numbers are borrowed from 2016."""
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_profile
+
+        rows, _ = await fetch_neighbourhood_profile(neighbourhood="95", year=2011)
+
+        assert rows == [
+            {
+                "year": 2011,
+                "Category": "Population",
+                "Topic": "Population and dwellings",
+                "Characteristic": "Population, 2011",
+                "City of Toronto": "2,615,060",
+                "Annex": "29,177",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_limit_caps_rows(self) -> None:
+        """limit caps the number of characteristic rows returned."""
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_profile
+
+        rows, _ = await fetch_neighbourhood_profile(limit=2)
+        assert len(rows) == 2
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", ["Nowhere", "park", "  "])
+    async def test_bad_neighbourhood_raises(self, name: str) -> None:
+        """Unknown, ambiguous ("park") and blank names raise InvalidInput."""
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_profile
+        from mcp_canada.shared.errors import InvalidInput
+
+        with pytest.raises(InvalidInput):
+            await fetch_neighbourhood_profile(neighbourhood=name)
+
+    @pytest.mark.asyncio
+    async def test_numbers_missing_falls_back_to_names(self) -> None:
+        """Without a Neighbourhood Number row, names still resolve."""
         from mcp_canada.modules.toronto.client import fetch_neighbourhood_profile
 
         with patch(
-            "mcp_canada.modules.toronto.client.fetch_datastore_records",
-            new_callable=AsyncMock,
-            return_value=([{"Characteristic": "Total population", "City of Toronto": "2731571"}], False),
-        ) as mock_fetch:
-            await fetch_neighbourhood_profile(characteristic="Total population")
+            "mcp_canada.modules.toronto.client.fetch_profile_table",
+            new=AsyncMock(return_value=(_PROFILE_2016[1:], False)),
+        ):
+            rows, was_cached = await fetch_neighbourhood_profile(
+                neighbourhood="Moss Park", characteristic="population"
+            )
 
-        # Verify q param was passed
-        call_kwargs = mock_fetch.call_args[1]
-        assert "q" in call_kwargs or "filters" in call_kwargs or len(mock_fetch.call_args.args) > 0
+        assert rows[0]["Moss Park"] == "20,506"
+        assert was_cached is False
+
+
+class TestFetchNeighbourhoodComparison:
+    @pytest.mark.asyncio
+    async def test_returns_all_neighbourhoods(self) -> None:
+        """Comparison rows hold every neighbourhood's value for the characteristic."""
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_comparison
+
+        with patch(
+            "mcp_canada.modules.toronto.client.fetch_profile_table",
+            new=AsyncMock(side_effect=_fake_profile_table),
+        ):
+            rows, _ = await fetch_neighbourhood_comparison("Population, 2016")
+
+        assert len(rows) == 1
+        assert rows[0]["Annex"] == "30,526"
+        assert rows[0]["Moss Park"] == "20,506"
+
+    @pytest.mark.asyncio
+    async def test_empty_characteristic_raises(self) -> None:
+        """A blank characteristic raises InvalidInput instead of returning everything."""
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_comparison
+        from mcp_canada.shared.errors import InvalidInput
+
+        with pytest.raises(InvalidInput):
+            await fetch_neighbourhood_comparison(" , ")
 
 
 # ---------------------------------------------------------------------------

@@ -466,13 +466,14 @@ def toronto_neighbourhood_profiles_guide() -> str:
 
 ## Overview
 
-Toronto's Neighbourhood Profiles dataset contains 2,383 census characteristics
-for each of the city's 140 official neighbourhoods. Data comes from the 2016 Census
-of Population conducted by Statistics Canada.
+Toronto's Neighbourhood Profiles dataset contains census characteristics for each
+of the city's 140 official neighbourhoods (2,383 in 2016). Both tools take a `year`
+parameter: 2006, 2011 or 2016 (default), from the Census of Population conducted by
+Statistics Canada.
 
 **Tool:** `toronto_get_neighbourhood_profile`
 **Compare Tool:** `toronto_compare_neighbourhoods`
-**Resource ID:** `7f8eee5e-85fb-415c-aef3-c3bd4998445f`
+**Dataset:** `neighbourhood-profiles` (each year's table is looked up by name)
 
 ## The 140-Neighbourhood Model
 
@@ -499,21 +500,29 @@ Toronto has 140 official neighbourhoods (as of the 2016 model):
 
 ## Indicator Format
 
-Each indicator has:
-- `Characteristic`: The indicator name (e.g., "Total population")
+Each indicator row has:
+- `year`: The census year of the row
+- `Category`, `Topic`: Grouping of the indicator
+- `Characteristic`: The indicator name (e.g., "Population, 2016")
 - `City of Toronto`: City-wide value for comparison
-- `{neighbourhood_name}`: Value for the requested neighbourhood
+- `{neighbourhood_name}`: Value for each neighbourhood, or only the requested one
+
+`characteristic` matches rows whose name contains every word, ignoring case and
+punctuation. `neighbourhood` accepts a full name, a unique partial name or the
+City neighbourhood number (2006 and 2011 use the 2016 numbers).
 
 ## Usage Example
 
 ```
-toronto_get_neighbourhood_profile(neighbourhood="Annex")
-toronto_compare_neighbourhoods(neighbourhood1="Annex", neighbourhood2="Regent Park")
+toronto_get_neighbourhood_profile(neighbourhood="Annex", characteristic="population")
+toronto_get_neighbourhood_profile(neighbourhood="95", characteristic="population", year=2011)
+toronto_compare_neighbourhoods(characteristic="Population, 2016")
 ```
 
 ## Notes
 
-- Data is from the 2016 Census — a newer version may be released
+- 2021 profiles use a 158-neighbourhood model and are not covered yet
+- The City's 2016 file leaves neighbourhood median incomes blank (null)
 - Neighbourhood boundaries and census tracts do not always align perfectly
 - Some indicators show ranges or percentages, not raw counts
 """

@@ -23,8 +23,8 @@ All tools accept `lang: "en" | "fr"` for bilingual support.
 |------|-------------|----------------|
 | `toronto_get_ttc_stops` | Search TTC (Toronto Transit Commission) stops by name from GTFS static schedule. | `query` |
 | `toronto_get_ttc_routes` | List TTC (Toronto Transit Commission) routes from GTFS static schedule data. | `route_type` |
-| `toronto_get_neighbourhood_profile` | Get census indicator data for Toronto neighbourhoods from the Neighbourhood Profiles dataset. | `neighbourhood`, `characteristic`, `limit` |
-| `toronto_compare_neighbourhoods` | Compare a single census indicator across all 140 Toronto neighbourhoods. | `characteristic`, `limit` |
+| `toronto_get_neighbourhood_profile` | Get census indicator data for Toronto neighbourhoods from the Neighbourhood Profiles dataset. | `neighbourhood`, `characteristic`, `limit`, `year` |
+| `toronto_compare_neighbourhoods` | Compare a single census indicator across all 140 Toronto neighbourhoods. | `characteristic`, `limit`, `year` |
 | `toronto_get_311_requests` | Fetch Toronto 311 service requests (citizen complaints and service calls) for a given year. | `year`, `ward`, `service_type`, `status`, `limit` |
 | `toronto_get_rentsafe_evaluations` | Query RentSafeTO apartment building evaluation scores from City of Toronto inspections. | `ward`, `min_score`, `limit` |
 | `toronto_get_short_term_rentals` | Query Toronto short-term rental (STR) operator registration records. | `ward`, `status`, `limit` |
