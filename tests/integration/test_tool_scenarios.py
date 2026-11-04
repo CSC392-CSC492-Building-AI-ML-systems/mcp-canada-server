@@ -597,6 +597,20 @@ class TestTorontoToolScenarios:
         assert "Annex" in data["data"][0]
 
     @pytest.mark.asyncio
+    @pytest.mark.timeout(120)
+    async def test_toronto_neighbourhood_profile_2021(self, mcp_server):
+        """'What was the population of the Annex in 2021?' (XLSX, 158-neighbourhood model)"""
+        data = await call_tool(mcp_server, "toronto_get_neighbourhood_profile", {
+            "neighbourhood": "Annex",
+            "characteristic": "population",
+            "year": 2021,
+            "limit": 10
+        })
+        assert len(data["data"]) >= 1
+        assert all(r["year"] == 2021 for r in data["data"])
+        assert "Annex" in data["data"][0]
+
+    @pytest.mark.asyncio
     @pytest.mark.timeout(30)
     async def test_toronto_rentsafe(self, mcp_server):
         """'Show me apartment buildings in Ward 10.'"""

@@ -2756,18 +2756,18 @@ Get census indicator data for Toronto neighbourhoods from the Neighbourhood Prof
 | `neighbourhood` | `str | None` | `None` | — |
 | `characteristic` | `str | None` | `None` | — |
 | `limit` | `int` | `100` | — |
-| `year` | `Literal[2006, 2011, 2016]` | `2016` | — |
+| `year` | `Literal[2006, 2011, 2016, 2021]` | `2016` | — |
 | `lang` | `Literal['en', 'fr']` | `'en'` | — |
 
 ### `toronto_compare_neighbourhoods`
 
-Compare a single census indicator across all 140 Toronto neighbourhoods.
+Compare a single census indicator across all Toronto neighbourhoods.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `characteristic` | `str` | — | — |
 | `limit` | `int` | `200` | — |
-| `year` | `Literal[2006, 2011, 2016]` | `2016` | — |
+| `year` | `Literal[2006, 2011, 2016, 2021]` | `2016` | — |
 | `lang` | `Literal['en', 'fr']` | `'en'` | — |
 
 ### `toronto_get_311_requests`

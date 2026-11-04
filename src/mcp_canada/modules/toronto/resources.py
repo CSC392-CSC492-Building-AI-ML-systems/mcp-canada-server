@@ -467,9 +467,10 @@ def toronto_neighbourhood_profiles_guide() -> str:
 ## Overview
 
 Toronto's Neighbourhood Profiles dataset contains census characteristics for each
-of the city's 140 official neighbourhoods (2,383 in 2016). Both tools take a `year`
-parameter: 2006, 2011 or 2016 (default), from the Census of Population conducted by
-Statistics Canada.
+of the city's official neighbourhoods (2,383 in 2016). Both tools take a `year`
+parameter: 2006, 2011, 2016 (default) or 2021, from the Census of Population conducted
+by Statistics Canada. 2006-2016 use the 140-neighbourhood model; 2021 uses the
+158-neighbourhood model, with its own names and numbers.
 
 **Tool:** `toronto_get_neighbourhood_profile`
 **Compare Tool:** `toronto_compare_neighbourhoods`
@@ -504,12 +505,12 @@ Each indicator row has:
 - `year`: The census year of the row
 - `Category`, `Topic`: Grouping of the indicator
 - `Characteristic`: The indicator name (e.g., "Population, 2016")
-- `City of Toronto`: City-wide value for comparison
+- `City of Toronto`: City-wide value for comparison (not in 2021)
 - `{neighbourhood_name}`: Value for each neighbourhood, or only the requested one
 
 `characteristic` matches rows whose name contains every word, ignoring case and
 punctuation. `neighbourhood` accepts a full name, a unique partial name or the
-City neighbourhood number (2006 and 2011 use the 2016 numbers).
+City neighbourhood number (2006 and 2011 use the 2016 numbers; 2021 has its own).
 
 ## Usage Example
 
@@ -517,11 +518,16 @@ City neighbourhood number (2006 and 2011 use the 2016 numbers).
 toronto_get_neighbourhood_profile(neighbourhood="Annex", characteristic="population")
 toronto_get_neighbourhood_profile(neighbourhood="95", characteristic="population", year=2011)
 toronto_compare_neighbourhoods(characteristic="Population, 2016")
+toronto_get_neighbourhood_profile(neighbourhood="Annex", characteristic="population", year=2021)
 ```
 
 ## Notes
 
-- 2021 profiles use a 158-neighbourhood model and are not covered yet
+- 2021 uses the 158-neighbourhood model: 16 of the 140 neighbourhoods were split, so
+  their 2021 names and numbers have no exact match in earlier years
+- 2021 rows have no `Category`; their `Topic` is the nearest unindented row above,
+  which tells repeated labels apart (e.g. "0 to 14 years" under each age total).
+  Total population is in "Total - Age groups of the population - 25% sample data"
 - The City's 2016 file leaves neighbourhood median incomes blank (null)
 - Neighbourhood boundaries and census tracts do not always align perfectly
 - Some indicators show ranges or percentages, not raw counts

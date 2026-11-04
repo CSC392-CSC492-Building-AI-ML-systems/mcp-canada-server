@@ -400,32 +400,103 @@ async def fetch_datastore_records(
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_profile_resource_id(year: int) -> str:
-    """Find the current datastore resource id of one census year's profile.
+async def _resolve_profile_resource(year: int) -> dict[str, Any]:
+    """Find the current resource of one census year's profile.
 
     Looked up by resource name in package_show, never a pinned id: Toronto
-    republishes files under new resource ids (see GTFS_DATASET_ID).
+    republishes files under new resource ids (see GTFS_DATASET_ID). A year
+    read from a sheet needs a download url; any other year needs an active
+    datastore table.
 
     Args:
         year: Census year, a key of NEIGHBOURHOOD_PROFILE_YEARS.
 
     Returns:
-        The datastore resource id for that year's profile table.
+        The raw CKAN resource dict for that year's profile.
     """
-    resource_name = NEIGHBOURHOOD_PROFILE_YEARS[year]["resource_name"]
+    config = NEIGHBOURHOOD_PROFILE_YEARS[year]
+    resource_name = config["resource_name"]
     package, _ = await _api_get(
         "action/package_show",
         {"id": NEIGHBOURHOOD_PROFILES_DATASET_ID},
         CACHE_TTL_SEARCH,
     )
     for resource in package.get("resources") or []:
+        if resource.get("name") != resource_name:
+            continue
+        if "sheet" in config:
+            if resource.get("url"):
+                return resource
         # Toronto returns datastore_active as both True and "True".
-        active = str(resource.get("datastore_active")).lower() == "true"
-        if resource.get("name") == resource_name and active and resource.get("id"):
-            return str(resource["id"])
-    raise UpstreamData(
-        f"Neighbourhood Profiles has no datastore resource named {resource_name!r}"
-    )
+        elif str(resource.get("datastore_active")).lower() == "true" and resource.get("id"):
+            return resource
+    raise UpstreamData(f"Neighbourhood Profiles has no usable resource named {resource_name!r}")
+
+
+def _parse_profile_sheet(content: bytes, sheet: str, label_column: str) -> list[dict[str, Any]]:
+    """Parse a profile XLSX sheet into rows keyed by the headers as written.
+
+    The shared XLSX parser rewrites headers to snake_case, which would turn
+    neighbourhood names such as "Rosedale-Moore Park" into keys, so the sheet
+    is read here instead. The first column holds the label, indented to show
+    nesting. Many labels repeat ("  0 to 4 years" under several totals), so
+    each row also gets a "Topic": the nearest label above it with no indent.
+
+    Args:
+        content: Raw XLSX file bytes.
+        sheet: Name of the sheet holding the profile.
+        label_column: Key given to the first column.
+
+    Returns:
+        One dict per row with a label, in sheet order.
+    """
+    import openpyxl  # noqa: PLC0415
+
+    wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=True)
+    try:
+        sheet_rows = list(wb[sheet].iter_rows(values_only=True))
+    finally:
+        wb.close()
+    if not sheet_rows:
+        return []
+
+    headers = [label_column] + [
+        str(h).strip() if h is not None else "" for h in sheet_rows[0][1:]
+    ]
+    rows: list[dict[str, Any]] = []
+    topic = ""
+    for values in sheet_rows[1:]:
+        if not values or values[0] is None or not str(values[0]).strip():
+            continue
+        label = str(values[0])
+        if label == label.lstrip():
+            topic = label.strip()
+        row = {header: value for header, value in zip(headers, values, strict=False) if header}
+        rows.append({label_column: row.pop(label_column), "Topic": topic, **row})
+    return rows
+
+
+async def _fetch_profile_sheet(year: int) -> tuple[list[dict[str, Any]], bool]:
+    """Download and parse one census year's profile XLSX, cached by year.
+
+    Args:
+        year: Census year whose NEIGHBOURHOOD_PROFILE_YEARS entry names a sheet.
+
+    Returns:
+        (list of profile row dicts, was_cached)
+    """
+    config = NEIGHBOURHOOD_PROFILE_YEARS[year]
+    limiter = get_limiter(RATE_GROUP, rate=RATE_LIMIT)
+
+    async def fetcher() -> list[dict[str, Any]]:
+        resource = await _resolve_profile_resource(year)
+        await limiter.acquire()
+        async with httpx.AsyncClient(timeout=120.0) as http:
+            response = await http.get(str(resource["url"]), follow_redirects=True)
+            response.raise_for_status()
+        return _parse_profile_sheet(response.content, config["sheet"], config["label_column"])
+
+    return await cached_fetch(f"toronto:neighbourhood-profile:{year}", CACHE_TTL_DATA, fetcher)
 
 
 async def fetch_profile_table(
@@ -434,10 +505,11 @@ async def fetch_profile_table(
     """Fetch every row of one census year's neighbourhood profile table.
 
     Reads the datastore page by page without a ``q`` filter, so nothing is left
-    out; CKAN's full-text ``q`` missed rows such as "Population, 2016".
+    out; CKAN's full-text ``q`` missed rows such as "Population, 2016". 2021 has
+    no datastore table, so its XLSX file is downloaded and parsed instead.
 
     Args:
-        year: Census year (2006, 2011 or 2016).
+        year: Census year (2006, 2011, 2016 or 2021).
 
     Returns:
         (list of all profile row dicts, was_cached) — was_cached is True only
@@ -451,9 +523,14 @@ async def fetch_profile_table(
         raise InvalidInput(
             f"year must be one of {sorted(NEIGHBOURHOOD_PROFILE_YEARS)}, got {year}"
         )
-    resource_id = await _resolve_profile_resource_id(year)
+    if "sheet" in NEIGHBOURHOOD_PROFILE_YEARS[year]:
+        rows, all_cached = await _fetch_profile_sheet(year)
+        if not rows:
+            raise UpstreamData(f"Neighbourhood profile table for {year} has no rows")
+        return rows, all_cached
 
-    rows: list[dict[str, Any]] = []
+    resource_id = str((await _resolve_profile_resource(year))["id"])
+    rows = []
     all_cached = True
     offset = 0
     while True:
@@ -475,7 +552,7 @@ async def fetch_profile_table(
 
 
 # Columns of a profile table that are not neighbourhoods. Every other column
-# is one neighbourhood, named as in the City's 140-neighbourhood model.
+# is one neighbourhood, named as in that year's neighbourhood model.
 _PROFILE_META_COLUMNS = frozenset(
     {
         "_id",
@@ -485,6 +562,7 @@ _PROFILE_META_COLUMNS = frozenset(
         "Data Source",
         "Characteristic",
         "Attribute",
+        "Neighbourhood Name",
         "City of Toronto",
     }
 )
@@ -512,26 +590,44 @@ def _neighbourhood_columns(row: dict[str, Any]) -> list[str]:
     return [col for col in row if col not in _PROFILE_META_COLUMNS]
 
 
-async def _fetch_neighbourhood_numbers() -> tuple[dict[str, str], bool]:
-    """Map each neighbourhood name to its City neighbourhood number.
-
-    Only the 2016 table has a "Neighbourhood Number" row. 2006 and 2011 use the
-    same 140 names, so their numbers are taken from 2016.
+def _neighbourhood_numbers(rows: list[dict[str, Any]], label_column: str) -> dict[str, str]:
+    """Map neighbourhood name to number from a table's "Neighbourhood Number" row.
 
     Returns:
-        (dict of neighbourhood name to number, was_cached)
+        The mapping, or an empty dict when the table has no such row.
     """
-    rows, was_cached = await fetch_profile_table(PROFILE_NUMBERS_YEAR)
-    label_column = NEIGHBOURHOOD_PROFILE_YEARS[PROFILE_NUMBERS_YEAR]["label_column"]
     for row in rows:
         if _normalize_text(row.get(label_column)) == _NEIGHBOURHOOD_NUMBER_LABEL:
-            numbers = {
+            return {
                 col: str(row[col]).strip()
                 for col in _neighbourhood_columns(rows[0])
                 if row.get(col) not in (None, "")
             }
-            return numbers, was_cached
-    return {}, was_cached
+    return {}
+
+
+async def _fetch_neighbourhood_numbers(
+    rows: list[dict[str, Any]],
+    label_column: str,
+) -> tuple[dict[str, str], bool]:
+    """Map each neighbourhood name to its City neighbourhood number.
+
+    2016 and 2021 carry a "Neighbourhood Number" row. 2006 and 2011 do not but
+    use the same 140 names as 2016, so their numbers are taken from 2016.
+
+    Args:
+        rows: The profile table being queried.
+        label_column: That table's label column.
+
+    Returns:
+        (dict of neighbourhood name to number, was_cached)
+    """
+    numbers = _neighbourhood_numbers(rows, label_column)
+    if numbers:
+        return numbers, True
+    numbers_rows, was_cached = await fetch_profile_table(PROFILE_NUMBERS_YEAR)
+    label = NEIGHBOURHOOD_PROFILE_YEARS[PROFILE_NUMBERS_YEAR]["label_column"]
+    return _neighbourhood_numbers(numbers_rows, label), was_cached
 
 
 def _resolve_neighbourhood(columns: list[str], numbers: dict[str, str], query: str) -> str:
@@ -617,7 +713,7 @@ async def fetch_neighbourhood_profile(
             When given, only that neighbourhood's column is returned.
         characteristic: Optional words that must all appear in the characteristic.
         limit: Maximum number of characteristic rows to return (default: 100).
-        year: Census year (2006, 2011 or 2016; default: 2016).
+        year: Census year (2006, 2011, 2016 or 2021; default: 2016).
 
     Returns:
         (list of profile row dicts, was_cached)
@@ -631,7 +727,7 @@ async def fetch_neighbourhood_profile(
     columns = _neighbourhood_columns(rows[0])
 
     if neighbourhood:
-        numbers, numbers_cached = await _fetch_neighbourhood_numbers()
+        numbers, numbers_cached = await _fetch_neighbourhood_numbers(rows, label_column)
         columns = [_resolve_neighbourhood(columns, numbers, neighbourhood)]
         was_cached = was_cached and numbers_cached
 
@@ -658,7 +754,7 @@ async def fetch_neighbourhood_comparison(
     Args:
         characteristic: Words that must all appear in the characteristic.
         limit: Maximum number of matching rows to return (default: 10).
-        year: Census year (2006, 2011 or 2016; default: 2016).
+        year: Census year (2006, 2011, 2016 or 2021; default: 2016).
 
     Returns:
         (list of profile row dicts, was_cached)

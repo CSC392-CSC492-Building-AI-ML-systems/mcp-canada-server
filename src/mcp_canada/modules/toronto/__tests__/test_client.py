@@ -543,8 +543,8 @@ class TestFetchProfileTable:
         with (
             patch("mcp_canada.modules.toronto.client.PROFILE_PAGE_SIZE", 2),
             patch(
-                "mcp_canada.modules.toronto.client._resolve_profile_resource_id",
-                new=AsyncMock(return_value="res-2016"),
+                "mcp_canada.modules.toronto.client._resolve_profile_resource",
+                new=AsyncMock(return_value={"id": "res-2016"}),
             ),
             patch(
                 "mcp_canada.modules.toronto.client.fetch_datastore_records",
@@ -565,7 +565,7 @@ class TestFetchProfileTable:
         from mcp_canada.shared.errors import InvalidInput
 
         with pytest.raises(InvalidInput):
-            await fetch_profile_table(2021)
+            await fetch_profile_table(2001)
 
     @pytest.mark.asyncio
     async def test_empty_table_raises(self) -> None:
@@ -575,8 +575,8 @@ class TestFetchProfileTable:
 
         with (
             patch(
-                "mcp_canada.modules.toronto.client._resolve_profile_resource_id",
-                new=AsyncMock(return_value="res-2016"),
+                "mcp_canada.modules.toronto.client._resolve_profile_resource",
+                new=AsyncMock(return_value={"id": "res-2016"}),
             ),
             patch(
                 "mcp_canada.modules.toronto.client.fetch_datastore_records",
@@ -588,8 +588,8 @@ class TestFetchProfileTable:
 
     @pytest.mark.asyncio
     async def test_resolves_resource_by_name(self) -> None:
-        """_resolve_profile_resource_id picks the datastore resource with the year's name."""
-        from mcp_canada.modules.toronto.client import _resolve_profile_resource_id
+        """_resolve_profile_resource picks the datastore resource with the year's name."""
+        from mcp_canada.modules.toronto.client import _resolve_profile_resource
 
         package = {
             "resources": [
@@ -603,12 +603,31 @@ class TestFetchProfileTable:
             "mcp_canada.modules.toronto.client._api_get",
             new=AsyncMock(return_value=(package, False)),
         ):
-            assert await _resolve_profile_resource_id(2011) == "ds-2011"
+            resource = await _resolve_profile_resource(2011)
+        assert resource["id"] == "ds-2011"
+
+    @pytest.mark.asyncio
+    async def test_resolves_sheet_year_by_url(self) -> None:
+        """A sheet year (2021) needs a download url, not a datastore table."""
+        from mcp_canada.modules.toronto.client import _resolve_profile_resource
+
+        package = {
+            "resources": [
+                {"id": "x-2021", "name": "neighbourhood-profiles-2021-158-model",
+                 "url": "https://example.test/2021.xlsx", "datastore_active": False},
+            ]
+        }
+        with patch(
+            "mcp_canada.modules.toronto.client._api_get",
+            new=AsyncMock(return_value=(package, False)),
+        ):
+            resource = await _resolve_profile_resource(2021)
+        assert resource["url"] == "https://example.test/2021.xlsx"
 
     @pytest.mark.asyncio
     async def test_missing_resource_raises(self) -> None:
-        """_resolve_profile_resource_id raises UpstreamData when no resource matches."""
-        from mcp_canada.modules.toronto.client import _resolve_profile_resource_id
+        """_resolve_profile_resource raises UpstreamData when no resource matches."""
+        from mcp_canada.modules.toronto.client import _resolve_profile_resource
         from mcp_canada.shared.errors import UpstreamData
 
         with (
@@ -618,7 +637,111 @@ class TestFetchProfileTable:
             ),
             pytest.raises(UpstreamData),
         ):
-            await _resolve_profile_resource_id(2016)
+            await _resolve_profile_resource(2016)
+
+
+def _profile_2021_xlsx() -> bytes:
+    """A small stand-in for the City's 2021 profile workbook."""
+    import io
+
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "hd2021_census_profile"
+    ws.append(["Neighbourhood Name", "West Humber-Clairville", "Annex", "Yonge-Bay Corridor"])
+    ws.append(["Neighbourhood Number", 1, 95, 170])
+    ws.append(["TSNS 2020 Designation", "NIA", "Not an NIA or Emerging Neighbourhood",
+               "Not an NIA or Emerging Neighbourhood"])
+    ws.append([None, None, None, None])
+    ws.append(["Total - Age groups of the population - 25% sample data", 33300, 31195, 12645])
+    ws.append(["  0 to 14 years", 4295, 2390, 655])
+    ws.append(["Total - Age groups of men - 25% sample data", 16500, 14900, 6200])
+    ws.append(["  0 to 14 years", 2200, 1210, 330])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+class TestFetchProfileSheet:
+    @pytest.mark.asyncio
+    async def test_downloads_and_parses_2021(self) -> None:
+        """2021 is read from its XLSX sheet with neighbourhood names kept as written."""
+        from mcp_canada.modules.toronto.client import fetch_profile_table
+
+        with (
+            patch(
+                "mcp_canada.modules.toronto.client.cached_fetch",
+                side_effect=_make_fake_cached_fetch(None),
+            ),
+            patch(
+                "mcp_canada.modules.toronto.client._resolve_profile_resource",
+                new=AsyncMock(return_value={"url": "https://example.test/2021.xlsx"}),
+            ),
+            patch("httpx.AsyncClient") as mock_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client.get = AsyncMock(return_value=make_mock_bytes_response(_profile_2021_xlsx()))
+            mock_cls.return_value = mock_client
+
+            rows, was_cached = await fetch_profile_table(2021)
+
+        assert was_cached is False
+        assert [r["Neighbourhood Name"] for r in rows] == [
+            "Neighbourhood Number",
+            "TSNS 2020 Designation",
+            "Total - Age groups of the population - 25% sample data",
+            "  0 to 14 years",
+            "Total - Age groups of men - 25% sample data",
+            "  0 to 14 years",
+        ]
+        # Repeated labels are told apart by the unindented row above them.
+        assert [r["Topic"] for r in rows[2:]] == [
+            "Total - Age groups of the population - 25% sample data",
+            "Total - Age groups of the population - 25% sample data",
+            "Total - Age groups of men - 25% sample data",
+            "Total - Age groups of men - 25% sample data",
+        ]
+        assert rows[3]["Yonge-Bay Corridor"] == 655
+        assert list(rows[3])[:3] == ["Neighbourhood Name", "Topic", "West Humber-Clairville"]
+        mock_client.get.assert_called_once_with(
+            "https://example.test/2021.xlsx", follow_redirects=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_sheet_raises(self) -> None:
+        """A 2021 sheet with no rows raises UpstreamData."""
+        from mcp_canada.modules.toronto.client import fetch_profile_table
+        from mcp_canada.shared.errors import UpstreamData
+
+        with (
+            patch(
+                "mcp_canada.modules.toronto.client._fetch_profile_sheet",
+                new=AsyncMock(return_value=([], False)),
+            ),
+            pytest.raises(UpstreamData),
+        ):
+            await fetch_profile_table(2021)
+
+    def test_parse_empty_workbook(self) -> None:
+        """A sheet without any rows parses to an empty list."""
+        import io
+
+        import openpyxl
+
+        from mcp_canada.modules.toronto.client import _parse_profile_sheet
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.title = "hd2021_census_profile"
+        buffer = io.BytesIO()
+        wb.save(buffer)
+
+        assert _parse_profile_sheet(buffer.getvalue(), "hd2021_census_profile", "Label") == []
 
 
 class TestFetchNeighbourhoodProfile:
@@ -694,6 +817,36 @@ class TestFetchNeighbourhoodProfile:
                 "Annex": "29,177",
             }
         ]
+
+    @pytest.mark.asyncio
+    async def test_2021_uses_its_own_numbers(self) -> None:
+        """2021 resolves numbers from its own Neighbourhood Number row, not 2016's."""
+        from mcp_canada.modules.toronto.client import (
+            _parse_profile_sheet,
+            fetch_neighbourhood_profile,
+        )
+
+        table_2021 = _parse_profile_sheet(
+            _profile_2021_xlsx(), "hd2021_census_profile", "Neighbourhood Name"
+        )
+        tables = {2016: _PROFILE_2016, 2021: table_2021}
+        with patch(
+            "mcp_canada.modules.toronto.client.fetch_profile_table",
+            new=AsyncMock(side_effect=lambda year: (tables[year], True)),
+        ) as mock_table:
+            rows, _ = await fetch_neighbourhood_profile(
+                neighbourhood="170", characteristic="total age groups population", year=2021
+            )
+
+        assert rows == [
+            {
+                "year": 2021,
+                "Characteristic": "Total - Age groups of the population - 25% sample data",
+                "Topic": "Total - Age groups of the population - 25% sample data",
+                "Yonge-Bay Corridor": 12645,
+            }
+        ]
+        assert [c.args[0] for c in mock_table.call_args_list] == [2021]
 
     @pytest.mark.asyncio
     async def test_limit_caps_rows(self) -> None:

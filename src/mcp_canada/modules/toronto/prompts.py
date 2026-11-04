@@ -97,7 +97,7 @@ async def toronto_explore_neighbourhood(
                 "Je vais utiliser toronto_get_neighbourhood_profile pour récupérer le profil "
                 "socioéconomique complet du quartier. Si vous souhaitez comparer deux quartiers, "
                 "j'utiliserai toronto_compare_neighbourhoods. Les données proviennent des "
-                "recensements de 2006, 2011 et 2016 (paramètre year, 2016 par défaut). "
+                "recensements de 2006, 2011, 2016 et 2021 (paramètre year, 2016 par défaut). "
                 "Commençons.",
                 role="assistant",
             ),
@@ -112,8 +112,8 @@ async def toronto_explore_neighbourhood(
         Message(
             "I will use toronto_get_neighbourhood_profile to retrieve the full socioeconomic "
             "profile. If you want to compare two neighbourhoods, I will use "
-            "toronto_compare_neighbourhoods. Data comes from the 2006, 2011 and 2016 "
-            "censuses (year parameter, 2016 by default). Let's get started.",
+            "toronto_compare_neighbourhoods. Data comes from the 2006, 2011, 2016 and "
+            "2021 censuses (year parameter, 2016 by default). Let's get started.",
             role="assistant",
         ),
     ]

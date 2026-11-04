@@ -302,21 +302,22 @@ async def toronto_get_neighbourhood_profile(
     neighbourhood: str | None = None,
     characteristic: str | None = None,
     limit: int = 100,
-    year: Literal[2006, 2011, 2016] = 2016,
+    year: Literal[2006, 2011, 2016, 2021] = 2016,
     lang: Literal["en", "fr"] = "en",
 ) -> dict[str, Any]:
     """Get census indicator data for Toronto neighbourhoods from the Neighbourhood Profiles dataset.
 
-    Census years 2006, 2011 and 2016 (default), covering the 140 neighbourhoods and thousands of
-    characteristics including population, income, housing, education, and demographics.
+    Census years 2006, 2011 and 2016 (default) on the 140-neighbourhood model, and 2021 on the
+    158-neighbourhood model (different names and numbers), with thousands of characteristics
+    including population, income, housing, education, and demographics.
     `neighbourhood` accepts a full name ("Annex"), a unique partial name ("Rosedale") or the City
     number ("95"); when given, only that neighbourhood's column is returned next to the city-wide
-    value. `characteristic` keeps rows whose label contains every word, ignoring case and
+    value (2021 has no city-wide column). `characteristic` keeps rows whose label contains every word, ignoring case and
     punctuation ("population", "median household income"). `limit` caps the rows returned.
     Every row carries its census `year`. The City's 2016 file leaves neighbourhood median
     incomes blank (null).
-    Use for: getting population statistics, income levels, housing tenure, education, demographics for a specific Toronto neighbourhood, or tracking a neighbourhood across census years. Data covers the 140-neighbourhood model used by City planning.
-    Keywords: neighbourhood, census, profile, demographics, population, income, housing, Toronto, ward, community, education, age, 2006, 2011, 2016, year, history, characteristics.
+    Use for: getting population statistics, income levels, housing tenure, education, demographics for a specific Toronto neighbourhood, or tracking a neighbourhood across census years. Data covers the 140-neighbourhood model (2006-2016) and the 158-neighbourhood model (2021) used by City planning.
+    Keywords: neighbourhood, census, profile, demographics, population, income, housing, Toronto, ward, community, education, age, 2006, 2011, 2016, 2021, year, history, characteristics.
     """
     rows, cached = await fetch_neighbourhood_profile(
         neighbourhood=neighbourhood,
@@ -343,17 +344,17 @@ async def toronto_get_neighbourhood_profile(
 async def toronto_compare_neighbourhoods(
     characteristic: str,
     limit: int = 200,
-    year: Literal[2006, 2011, 2016] = 2016,
+    year: Literal[2006, 2011, 2016, 2021] = 2016,
     lang: Literal["en", "fr"] = "en",
 ) -> dict[str, Any]:
-    """Compare a single census indicator across all 140 Toronto neighbourhoods.
+    """Compare a single census indicator across all Toronto neighbourhoods.
 
     `characteristic` keeps rows whose label contains every word, ignoring case and punctuation
-    (e.g. "Population, 2016", "average age"). Each row holds the value for all 140
-    neighbourhoods; `limit` caps the rows returned. `year` picks the census: 2006, 2011 or
-    2016 (default).
+    (e.g. "Population, 2016", "average age"). Each row holds the value for every neighbourhood
+    (140, or 158 in 2021); `limit` caps the rows returned. `year` picks the census: 2006, 2011,
+    2016 (default) or 2021.
     Use for: ranking or comparing neighbourhoods by a specific census characteristic — e.g., "Median household income", "Population, 2016", "Average age". Returns all 140 neighbourhoods with their value for the specified indicator.
-    Keywords: neighbourhood, comparison, indicator, census, demographics, ranking, Toronto, community, statistics, benchmark, 2006, 2011, 2016, income, population, age.
+    Keywords: neighbourhood, comparison, indicator, census, demographics, ranking, Toronto, community, statistics, benchmark, 2006, 2011, 2016, 2021, income, population, age.
     """
     rows, cached = await fetch_neighbourhood_comparison(
         characteristic=characteristic,
