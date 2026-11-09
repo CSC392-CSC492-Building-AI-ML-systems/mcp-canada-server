@@ -32,9 +32,28 @@ GTFS_DATASET_ID = "ttc-routes-and-schedules"
 # resolved at call time from CKAN package_show — see
 # toronto/client.py:_resolve_gtfs_zip_url.
 
-# Neighbourhood Profiles — 2016 Census, indicator-per-row model
-# Resource ID for the datastore-active version (140 neighbourhoods, 2,383 characteristics)
-NEIGHBOURHOOD_PROFILES_RESOURCE_ID = "7f8eee5e-85fb-415c-aef3-c3bd4998445f"
+# Neighbourhood Profiles by census year. Like the GTFS feed, each year's file
+# is found by resource NAME in package_show at call time, never a pinned id:
+# Toronto republishes files under new resource ids. 2006-2016 are datastore
+# tables on the 140-neighbourhood model; 2021 is only an XLSX file on the
+# 158-neighbourhood model, read from the named sheet.
+NEIGHBOURHOOD_PROFILES_DATASET_ID = "neighbourhood-profiles"
+NEIGHBOURHOOD_PROFILE_YEARS: dict[int, dict[str, str]] = {
+    2006: {"resource_name": "neighbourhood-profiles-2006-140-model", "label_column": "Attribute"},
+    2011: {"resource_name": "neighbourhood-profiles-2011-140-model", "label_column": "Attribute"},
+    2016: {"resource_name": "neighbourhood-profiles-2016-140-model", "label_column": "Characteristic"},
+    2021: {
+        "resource_name": "neighbourhood-profiles-2021-158-model",
+        "label_column": "Neighbourhood Name",
+        "sheet": "hd2021_census_profile",
+    },
+}
+DEFAULT_PROFILE_YEAR = 2016
+# 2006 and 2011 have no "Neighbourhood Number" row; they share 2016's 140 names,
+# so their numbers come from 2016. 2016 and 2021 carry their own numbers.
+PROFILE_NUMBERS_YEAR = 2016
+# Rows per datastore_search page when reading a whole profile table
+PROFILE_PAGE_SIZE = 1000
 
 # 311 Service Requests — annual ZIP+CSV files, one resource per year
 SERVICE_REQUESTS_DATASET_ID = "311-service-requests-customer-initiated"

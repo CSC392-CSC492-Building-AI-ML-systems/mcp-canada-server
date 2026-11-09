@@ -571,10 +571,44 @@ class TestTorontoToolScenarios:
         """'What\'s the population of Rosedale?'"""
         data = await call_tool(mcp_server, "toronto_get_neighbourhood_profile", {
             "neighbourhood": "Rosedale",
+            "characteristic": "population",
             "limit": 10
         })
         assert "_meta" in data
-        assert "data" in data
+        # Regression: CKAN full-text q returned 0 rows for "population".
+        assert any(r["Characteristic"] == "Population, 2016" for r in data["data"])
+        # Only the requested neighbourhood's column comes back.
+        assert "Annex" not in data["data"][0]
+        assert "Rosedale-Moore Park" in data["data"][0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(60)
+    @pytest.mark.parametrize("year", [2006, 2011, 2016])
+    async def test_toronto_neighbourhood_profile_years(self, mcp_server, year):
+        """'What was the population of the Annex in 2006, 2011 and 2016?'"""
+        data = await call_tool(mcp_server, "toronto_get_neighbourhood_profile", {
+            "neighbourhood": "95",
+            "characteristic": "population",
+            "year": year,
+            "limit": 10
+        })
+        assert len(data["data"]) >= 1
+        assert all(r["year"] == year for r in data["data"])
+        assert "Annex" in data["data"][0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(120)
+    async def test_toronto_neighbourhood_profile_2021(self, mcp_server):
+        """'What was the population of the Annex in 2021?' (XLSX, 158-neighbourhood model)"""
+        data = await call_tool(mcp_server, "toronto_get_neighbourhood_profile", {
+            "neighbourhood": "Annex",
+            "characteristic": "population",
+            "year": 2021,
+            "limit": 10
+        })
+        assert len(data["data"]) >= 1
+        assert all(r["year"] == 2021 for r in data["data"])
+        assert "Annex" in data["data"][0]
 
     @pytest.mark.asyncio
     @pytest.mark.timeout(30)
@@ -607,7 +641,10 @@ class TestTorontoToolScenarios:
             "limit": 20
         })
         assert "_meta" in data
-        assert "data" in data
+        assert len(data["data"]) >= 1
+        assert len([k for k in data["data"][0] if k not in (
+            "year", "Category", "Topic", "Data Source", "Characteristic", "City of Toronto"
+        )]) == 140
 
     @pytest.mark.asyncio
     async def test_commodity_plus_agriculture(self, mcp_server):

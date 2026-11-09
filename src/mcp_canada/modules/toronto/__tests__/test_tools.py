@@ -593,6 +593,31 @@ class TestTorontoGetNeighbourhoodProfile:
         assert result["_meta"]["lang"] == "fr"
 
     @pytest.mark.asyncio
+    async def test_year_passes_to_client(self):
+        """year is forwarded to the client; 2016 is the default."""
+        tools = import_tools()
+        mock = AsyncMock(return_value=(SAMPLE_NEIGHBOURHOOD_PROFILE, False))
+        with patch("mcp_canada.modules.toronto.tools.fetch_neighbourhood_profile", new=mock):
+            await tools.toronto_get_neighbourhood_profile(characteristic="population")
+            await tools.toronto_get_neighbourhood_profile(characteristic="population", year=2011)
+
+        assert [c.kwargs["year"] for c in mock.call_args_list] == [2016, 2011]
+
+    @pytest.mark.asyncio
+    async def test_invalid_input_returns_invalid_input(self):
+        """An unknown or ambiguous neighbourhood is INVALID_INPUT, not UPSTREAM_ERROR."""
+        from mcp_canada.shared.errors import InvalidInput
+
+        tools = import_tools()
+        with patch(
+            "mcp_canada.modules.toronto.tools.fetch_neighbourhood_profile",
+            new=AsyncMock(side_effect=InvalidInput("Unknown neighbourhood 'Nowhere'")),
+        ):
+            result = await tools.toronto_get_neighbourhood_profile(neighbourhood="Nowhere")
+
+        assert result["error"]["code"] == "INVALID_INPUT"
+
+    @pytest.mark.asyncio
     async def test_docstring_quality(self):
         """Tools must have Use for: and Keywords: lines in docstrings."""
         tools = import_tools()
@@ -634,6 +659,16 @@ class TestTorontoCompareNeighbourhoods:
 
         assert "error" in result
         assert result["error"]["code"] == "UPSTREAM_ERROR"
+
+    @pytest.mark.asyncio
+    async def test_year_passes_to_client(self):
+        """year is forwarded to the client."""
+        tools = import_tools()
+        mock = AsyncMock(return_value=(SAMPLE_NEIGHBOURHOOD_COMPARISON, False))
+        with patch("mcp_canada.modules.toronto.tools.fetch_neighbourhood_comparison", new=mock):
+            await tools.toronto_compare_neighbourhoods(characteristic="population", year=2006)
+
+        assert mock.call_args.kwargs["year"] == 2006
 
     @pytest.mark.asyncio
     async def test_lang_passes_through(self):
