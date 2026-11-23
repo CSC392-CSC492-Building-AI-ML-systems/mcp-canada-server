@@ -6,7 +6,7 @@ Time series data, cube metadata, catalog search, and SDMX server-side filtering 
 
 All tools accept `lang: "en" | "fr"` for bilingual support.
 
-## Tools (15)
+## Tools (16)
 
 <!-- CATALOG:statcan:start -->
 | Tool | Description | Key Parameters |
@@ -26,7 +26,12 @@ All tools accept `lang: "en" | "fr"` for bilingual support.
 | `sc_get_sdmx_data` | Get server-side filtered StatCan observations using SDMX key syntax. | `product_id`, `key`, `last_n`, `start_period`, `end_period`, `dimensions` |
 | `sc_get_sdmx_vector_data` | Get observations for a single StatCan vector via SDMX with date range filtering. | `vector_id`, `start_period`, `end_period` |
 | `sc_fetch_vectors_to_store` | Fetch multiple StatCan vectors and store them to the shared datastore for SQL queries. | `vector_ids`, `start_release`, `end_release`, `table_name` |
+| `sc_get_toronto_rents` | Get yearly average apartment rents by bedroom type and the vacancy rate for Toronto. | `years` |
 <!-- CATALOG:statcan:end -->
+
+### Toronto rents
+
+`sc_get_toronto_rents(years=10)` returns one row per year, newest first, for the Toronto census metropolitan area: `year`, `bachelor`, `one_bedroom`, `two_bedroom`, `three_bedroom_plus` (average monthly rent in dollars) and `vacancy_rate_pct`. Data is the CMHC October Rental Market Survey as published by Statistics Canada: rents from table [34-10-0133](https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3410013301) (private apartment buildings with 3+ units) and vacancy from table [34-10-0127](https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3410012701) (6+ units, no bedroom split). A value StatCan does not publish for a year is `null`. `years` must be 1 to 30.
 
 ## Prompts (6)
 

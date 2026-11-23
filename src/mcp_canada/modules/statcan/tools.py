@@ -36,6 +36,13 @@ from mcp_canada.modules.statcan.client import (
     search_cubes,
 )
 from mcp_canada.modules.statcan.constants import BASE_URL, SDMX_BASE_URL, _API_NAME, _SDMX_API_NAME
+from mcp_canada.modules.statcan.constants import (
+    TORONTO_RENT_COORDS,
+    TORONTO_RENT_PRODUCT_ID,
+    TORONTO_RENTS_MAX_YEARS,
+    TORONTO_VACANCY_COORD,
+    TORONTO_VACANCY_PRODUCT_ID,
+)
 from mcp_canada.shared.envelope import make_error, make_response
 from mcp_canada.shared.errors import InvalidInput, NotFound
 
@@ -700,5 +707,71 @@ async def sc_fetch_vectors_to_store(
         # Classified at the raise site (Phase 20.4). An unparseable upstream body
         # is UpstreamData and falls through to the catch-all as UPSTREAM_ERROR.
         return make_error("INVALID_INPUT", str(exc), lang=lang)
+    except Exception as exc:
+        return make_error("UPSTREAM_ERROR", f"Unexpected error: {exc}", lang=lang)
+
+
+# ---------------------------------------------------------------------------
+# Tool 16: Toronto average rents and vacancy rate (CMHC via StatCan)
+# ---------------------------------------------------------------------------
+
+
+@tool
+async def sc_get_toronto_rents(
+    years: int = 10,
+    lang: Literal["en", "fr"] = "en",
+) -> dict:
+    """Get yearly average apartment rents by bedroom type and the vacancy rate for Toronto.
+
+    Use for: tracking rent and vacancy trends in the Toronto census
+    metropolitan area. CMHC October Rental Market Survey, private apartment
+    buildings (3+ units for rents, 6+ units for vacancy), from Statistics
+    Canada tables 34-10-0133 and 34-10-0127. Returns one row per year,
+    newest first; a missing value is null.
+    Keywords: statcan, cmhc, toronto, rent, average rent, rental market, vacancy, vacancy rate, apartment, bachelor, one bedroom, two bedroom, housing, affordability
+    """
+    if years < 1 or years > TORONTO_RENTS_MAX_YEARS:
+        return make_error(
+            "INVALID_INPUT",
+            f"years must be between 1 and {TORONTO_RENTS_MAX_YEARS}.",
+            lang=lang,
+        )
+    try:
+        by_year: dict[str, dict[str, float | None]] = {}
+        all_cached = True
+
+        series = [
+            (field, TORONTO_RENT_PRODUCT_ID, coord)
+            for field, coord in TORONTO_RENT_COORDS.items()
+        ]
+        series.append(("vacancy_rate_pct", TORONTO_VACANCY_PRODUCT_ID, TORONTO_VACANCY_COORD))
+
+        for field, product_id, coord in series:
+            obs, was_cached = await get_latest_n_by_coord(product_id, coord, years)
+            all_cached = all_cached and was_cached
+            for row in obs:
+                by_year.setdefault(row.ref_per[:4], {})[field] = row.value
+
+        fields = [*TORONTO_RENT_COORDS, "vacancy_rate_pct"]
+        rows = [
+            {"year": int(year), **{f: by_year[year].get(f) for f in fields}}
+            for year in sorted(by_year, reverse=True)[:years]
+        ]
+        if not rows:
+            return make_error("NOT_FOUND", "StatCan returned no Toronto rent data.", lang=lang)
+
+        return make_response(
+            rows,
+            api_name=_API_NAME,
+            api_url=BASE_URL + "getDataFromCubePidCoordAndLatestNPeriods",
+            cached=all_cached,
+            lang=lang,
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 409:
+            return make_error("UPSTREAM_UNAVAILABLE", _MAINTENANCE_MSG, lang=lang)
+        return make_error("UPSTREAM_ERROR", str(exc), lang=lang)
+    except NotFound as exc:
+        return make_error("NOT_FOUND", str(exc), lang=lang)
     except Exception as exc:
         return make_error("UPSTREAM_ERROR", f"Unexpected error: {exc}", lang=lang)
