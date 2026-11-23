@@ -390,6 +390,54 @@ class TestFetchGTFSStops:
         assert results[0]["stop_name"] == "Union Station"
 
 
+class TestGtfsValueTypes:
+    """GTFS values stay text, except stop coordinates, which become floats."""
+
+    def test_parse_gtfs_csv_keeps_codes_as_text(self) -> None:
+        from mcp_canada.modules.toronto.client import _parse_gtfs_csv
+
+        content = (
+            "\ufeffroute_id,route_type,route_color,route_text_color\n"
+            "2,1,008000,000000\n"
+        ).encode("utf-8")
+        rows = _parse_gtfs_csv(content)
+
+        assert rows == [
+            {"route_id": "2", "route_type": "1", "route_color": "008000", "route_text_color": "000000"}
+        ]
+
+    def test_to_float_handles_blank_and_negative(self) -> None:
+        from mcp_canada.modules.toronto.client import _to_float
+
+        assert _to_float("-79.260939") == -79.260939
+        assert _to_float("43.714379") == 43.714379
+        assert _to_float("") is None
+        assert _to_float("  ") is None
+        assert _to_float(None) is None
+
+    @pytest.mark.asyncio
+    async def test_stops_coordinates_are_floats(self) -> None:
+        from mcp_canada.modules.toronto.client import fetch_gtfs_stops
+
+        cached_rows = [
+            {"stop_id": "662", "stop_name": "Danforth Rd at Kennedy Rd", "stop_lat": "43.714379", "stop_lon": "-79.260939"},
+            {"stop_id": "9999", "stop_name": "No Coords", "stop_lat": "", "stop_lon": ""},
+        ]
+        with patch(
+            "mcp_canada.modules.toronto.client.fetch_gtfs_file",
+            new_callable=AsyncMock,
+            return_value=(cached_rows, True),
+        ):
+            results, _ = await fetch_gtfs_stops()
+
+        assert results[0]["stop_lat"] == 43.714379
+        assert results[0]["stop_lon"] == -79.260939
+        assert results[0]["stop_id"] == "662"
+        assert results[1]["stop_lat"] is None and results[1]["stop_lon"] is None
+        # The cached rows are left untouched.
+        assert cached_rows[0]["stop_lon"] == "-79.260939"
+
+
 # ---------------------------------------------------------------------------
 # TestFetchGTFSRoutes
 # ---------------------------------------------------------------------------

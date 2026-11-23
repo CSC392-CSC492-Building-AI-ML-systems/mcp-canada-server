@@ -32,6 +32,7 @@ from mcp_canada.modules.toronto.client import (
     fetch_short_term_rentals,
 )
 from mcp_canada.shared.envelope import make_error, make_response, upstream_guard
+from mcp_canada.shared.errors import InvalidInput
 
 # API name and base URL for _meta envelope
 _API_NAME = "toronto-open-data"
@@ -231,26 +232,23 @@ async def toronto_get_dataset_stats(
 
 
 @tool
+@upstream_guard(_API_NAME)
 async def toronto_get_ttc_stops(
     query: str | None = None,
+    limit: int = 100,
     lang: Literal["en", "fr"] = "en",
 ) -> dict[str, Any]:
     """Search TTC (Toronto Transit Commission) stops by name from GTFS static schedule.
 
-    Use for: finding TTC subway stations, bus stops, or streetcar stops by name. Returns stop ID, name, and GPS coordinates. Filter by partial name (e.g., "King" finds King Station).
+    Use for: finding TTC subway stations, bus stops, or streetcar stops by name. Returns stop ID, name, and GPS coordinates. Filter by partial name (e.g., "King" finds King Station). `limit` caps the stops returned (default 100); there are about 9,400 TTC stops in total.
     Keywords: TTC, transit, stops, subway, bus, streetcar, Toronto, public transit, station, GTFS, schedule, location, GPS, coordinates.
     """
-    try:
-        stops, cached = await fetch_gtfs_stops(query=query)
-    except Exception:
-        return make_error(
-            "UPSTREAM_ERROR",
-            "Failed to fetch TTC GTFS stop data.",
-            lang=lang,
-        )
+    if limit < 1:
+        raise InvalidInput("limit must be at least 1")
+    stops, cached = await fetch_gtfs_stops(query=query)
 
     return make_response(
-        stops,
+        stops[:limit],
         api_name=_API_NAME,
         api_url=_API_URL,
         cached=cached,
@@ -264,6 +262,7 @@ async def toronto_get_ttc_stops(
 
 
 @tool
+@upstream_guard(_API_NAME)
 async def toronto_get_ttc_routes(
     route_type: str | None = None,
     lang: Literal["en", "fr"] = "en",
@@ -273,14 +272,7 @@ async def toronto_get_ttc_routes(
     Use for: listing all TTC routes, filtering by type (0=streetcar, 1=subway, 3=bus). Returns route ID, short name, long name, and type. Note: route_type is a GTFS code string.
     Keywords: TTC, routes, bus, subway, streetcar, transit, schedule, Toronto, line, service, GTFS, route number, route type.
     """
-    try:
-        routes, cached = await fetch_gtfs_routes(route_type=route_type)
-    except Exception:
-        return make_error(
-            "UPSTREAM_ERROR",
-            "Failed to fetch TTC GTFS route data.",
-            lang=lang,
-        )
+    routes, cached = await fetch_gtfs_routes(route_type=route_type)
 
     return make_response(
         routes,

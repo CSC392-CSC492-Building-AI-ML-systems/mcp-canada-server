@@ -11,9 +11,10 @@ For datastore_search: result = {"records": [...], "total": N}
 
 from __future__ import annotations
 
+import csv
 import re
 import zipfile
-from io import BytesIO
+from io import BytesIO, StringIO
 from typing import Any
 
 import httpx
@@ -252,6 +253,24 @@ async def fetch_dataset_count() -> tuple[int, bool]:
 # ---------------------------------------------------------------------------
 
 
+def _parse_gtfs_csv(content: bytes) -> list[dict[str, Any]]:
+    """Parse a GTFS .txt file, keeping every value as text.
+
+    GTFS ids and codes are text: route_color "008000" must not become 8000.
+    The shared _parse_csv turns number-like strings into numbers, so GTFS
+    files are read here without it.
+    """
+    text = content.decode("utf-8-sig")
+    return [dict(row) for row in csv.DictReader(StringIO(text))]
+
+
+def _to_float(value: Any) -> float | None:
+    """Convert a GTFS coordinate to float; blank or missing becomes None."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return float(value)
+
+
 async def _resolve_gtfs_zip_url(package: dict[str, Any]) -> str:
     """Pick the GTFS ZIP resource URL out of a CKAN package_show result.
 
@@ -304,7 +323,7 @@ async def fetch_gtfs_file(
             with zf.open(filename) as f:
                 csv_bytes = f.read()
 
-        return _parse_csv(csv_bytes)
+        return _parse_gtfs_csv(csv_bytes)
 
     return await cached_fetch(cache_key, ttl, fetcher)
 
@@ -321,6 +340,11 @@ async def fetch_gtfs_stops(
         (list of stop dicts, was_cached)
     """
     stops, was_cached = await fetch_gtfs_file("stops.txt")
+    # New dicts, so the cached rows are never modified in place.
+    stops = [
+        {**s, "stop_lat": _to_float(s.get("stop_lat")), "stop_lon": _to_float(s.get("stop_lon"))}
+        for s in stops
+    ]
     if query:
         q_lower = query.lower()
         stops = [s for s in stops if q_lower in (s.get("stop_name") or "").lower()]

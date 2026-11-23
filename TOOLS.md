@@ -2736,6 +2736,7 @@ Search TTC (Toronto Transit Commission) stops by name from GTFS static schedule.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `query` | `str | None` | `None` | — |
+| `limit` | `int` | `100` | — |
 | `lang` | `Literal['en', 'fr']` | `'en'` | — |
 
 ### `toronto_get_ttc_routes`
