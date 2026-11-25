@@ -468,8 +468,8 @@ def toronto_neighbourhood_profiles_guide() -> str:
 
 Toronto's Neighbourhood Profiles dataset contains census characteristics for each
 of the city's official neighbourhoods (2,383 in 2016). Both tools take a `year`
-parameter: 2006, 2011, 2016 (default) or 2021, from the Census of Population conducted
-by Statistics Canada. 2006-2016 use the 140-neighbourhood model; 2021 uses the
+parameter: 2001, 2006, 2011, 2016 (default) or 2021, from the Census of Population
+conducted by Statistics Canada. 2001-2016 use the 140-neighbourhood model; 2021 uses the
 158-neighbourhood model, with its own names and numbers.
 
 **Tool:** `toronto_get_neighbourhood_profile`
@@ -510,7 +510,8 @@ Each indicator row has:
 
 `characteristic` matches rows whose name contains every word, ignoring case and
 punctuation. `neighbourhood` accepts a full name, a unique partial name or the
-City neighbourhood number (2006 and 2011 use the 2016 numbers; 2021 has its own).
+City neighbourhood number (2001, 2006 and 2011 use the 2016 numbers; 2021 has its own).
+The 2001 table has both "Population, 1996" and "Population, 2001" rows.
 
 ## Usage Example
 
