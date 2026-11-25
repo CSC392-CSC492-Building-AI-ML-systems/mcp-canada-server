@@ -42,6 +42,7 @@ class TestToolDocstringQuality:
             "sc_get_sdmx_data",
             "sc_get_sdmx_vector_data",
             "sc_fetch_vectors_to_store",
+            "sc_get_toronto_rents",
         ]
         return [(name, getattr(tools, name)) for name in tool_names]
 
@@ -1043,4 +1044,181 @@ class TestScFetchVectorsToStore:
                 table_name="cpi_data",
                 lang="fr",
             )
+        assert result["_meta"]["lang"] == "fr"
+
+
+# ─── sc_get_toronto_rents ─────────────────────────────────────────────────────
+
+
+def _obs(year: int, value: float | None):
+    from mcp_canada.modules.statcan.schemas import ObservationRow
+    return ObservationRow(
+        ref_per=f"{year}-10-01", ref_per_raw=f"{year}-10-01", value=value,
+        decimals=0, scalar_factor_code=0, scalar_factor="units",
+        frequency_code=12, frequency="Annual", status_code=0,
+        symbol_code=0, release_time="2026-01-15 08:30",
+    )
+
+
+# (product_id, coordinate) -> rows the fake client returns, newest first
+_RENT_SERIES = {
+    (34100133, "125.1.1"): [_obs(2025, 1491.0), _obs(2024, 1450.0)],
+    (34100133, "125.1.2"): [_obs(2025, 1761.0), _obs(2024, 1700.0)],
+    (34100133, "125.1.3"): [_obs(2025, 2046.0), _obs(2024, 1990.0)],
+    (34100133, "125.1.4"): [_obs(2025, 2317.0), _obs(2024, 2250.0)],
+    (34100127, "23"): [_obs(2025, 3.0), _obs(2024, 2.2)],
+}
+
+
+def _fake_client(series: dict, cached: bool = False):
+    async def fake(product_id: int, coordinate: str, n: int = 10):
+        return series.get((product_id, coordinate), [])[:n], cached
+    return AsyncMock(side_effect=fake)
+
+
+class TestScGetTorontoRents:
+
+    @pytest.mark.asyncio
+    async def test_merges_series_by_year_newest_first(self):
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=_fake_client(_RENT_SERIES),
+        ):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents()
+        assert result["data"] == [
+            {"year": 2025, "bachelor": 1491.0, "one_bedroom": 1761.0,
+             "two_bedroom": 2046.0, "three_bedroom_plus": 2317.0,
+             "vacancy_rate_pct": 3.0},
+            {"year": 2024, "bachelor": 1450.0, "one_bedroom": 1700.0,
+             "two_bedroom": 1990.0, "three_bedroom_plus": 2250.0,
+             "vacancy_rate_pct": 2.2},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_calls_all_five_series_with_years_as_n(self):
+        mock = _fake_client(_RENT_SERIES)
+        with patch("mcp_canada.modules.statcan.tools.get_latest_n_by_coord", new=mock):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            await sc_get_toronto_rents(years=3)
+        calls = {(c.args[0], c.args[1], c.args[2]) for c in mock.call_args_list}
+        assert calls == {(pid, coord, 3) for pid, coord in _RENT_SERIES}
+
+    @pytest.mark.asyncio
+    async def test_years_limits_rows(self):
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=_fake_client(_RENT_SERIES),
+        ):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents(years=1)
+        assert [row["year"] for row in result["data"]] == [2025]
+
+    @pytest.mark.asyncio
+    async def test_missing_year_in_one_series_is_null(self):
+        series = dict(_RENT_SERIES)
+        series[(34100127, "23")] = [_obs(2025, 3.0)]          # no 2024 vacancy
+        series[(34100133, "125.1.1")] = [_obs(2025, None), _obs(2024, 1450.0)]
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=_fake_client(series),
+        ):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents()
+        rows = {row["year"]: row for row in result["data"]}
+        assert rows[2024]["vacancy_rate_pct"] is None
+        assert rows[2024]["bachelor"] == 1450.0
+        assert rows[2025]["bachelor"] is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("years", [0, -1, 31])
+    async def test_years_out_of_range_is_invalid_input(self, years):
+        mock = _fake_client(_RENT_SERIES)
+        with patch("mcp_canada.modules.statcan.tools.get_latest_n_by_coord", new=mock):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents(years=years)
+        assert result["error"]["code"] == "INVALID_INPUT"
+        mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_data_is_not_found(self):
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=_fake_client({}),
+        ):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents()
+        assert result["error"]["code"] == "NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_cached_true_only_when_every_series_cached(self):
+        from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=_fake_client(_RENT_SERIES, cached=True),
+        ):
+            assert (await sc_get_toronto_rents())["_meta"]["cached"] is True
+
+        calls = {"n": 0}
+
+        async def mixed(product_id, coordinate, n=10):
+            calls["n"] += 1
+            return _RENT_SERIES[(product_id, coordinate)], calls["n"] != 3
+
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=AsyncMock(side_effect=mixed),
+        ):
+            assert (await sc_get_toronto_rents())["_meta"]["cached"] is False
+
+    @pytest.mark.asyncio
+    async def test_409_returns_upstream_unavailable(self):
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=AsyncMock(side_effect=_make_409_error()),
+        ):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents()
+        assert result["error"]["code"] == "UPSTREAM_UNAVAILABLE"
+
+    @pytest.mark.asyncio
+    async def test_500_returns_upstream_error(self):
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=AsyncMock(side_effect=_make_500_error()),
+        ):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents()
+        assert result["error"]["code"] == "UPSTREAM_ERROR"
+
+    @pytest.mark.asyncio
+    async def test_not_found_from_client(self):
+        from mcp_canada.shared.errors import NotFound
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=AsyncMock(side_effect=NotFound("no series")),
+        ):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents()
+        assert result["error"]["code"] == "NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_returns_upstream_error(self):
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents()
+        assert result["error"]["code"] == "UPSTREAM_ERROR"
+        assert "boom" in result["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_lang_fr(self):
+        with patch(
+            "mcp_canada.modules.statcan.tools.get_latest_n_by_coord",
+            new=_fake_client(_RENT_SERIES),
+        ):
+            from mcp_canada.modules.statcan.tools import sc_get_toronto_rents
+            result = await sc_get_toronto_rents(lang="fr")
         assert result["_meta"]["lang"] == "fr"

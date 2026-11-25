@@ -18,7 +18,7 @@
 
 ---
 
-**295 tools, ~107 prompts, and ~141 resources** across **9 federal APIs + 9 provincial APIs + 2 municipal APIs + 1 local SQLite datastore** — exchange rates, parliamentary data, product recalls, drug information, 80K+ open datasets, food nutrition data, real-time weather, immigration statistics, Ontario provincial data, Toronto municipal data, York Region ArcGIS Hub data, British Columbia CKAN + WFS geospatial data, Quebec Données Québec CKAN + ArcGIS IQA data, Alberta open data + AER energy + WMBappServices wildfire + AHSGIS health + 511 Alberta transport, Manitoba geoportal (ArcGIS Hub) + 511 Manitoba transport, Saskatchewan geoportal (ArcGIS Hub) + WSA water infrastructure + SPSA fire bans, Nova Scotia Socrata SODA portal (data.novascotia.ca), New Brunswick federal-CKAN discovery + GeoNB bare ArcGIS Server geospatial data + gnb.socrata.com Socrata portal + key-gated 511 NB transport, and persistent local storage. All bilingual (English/French).
+**296 tools, ~107 prompts, and ~141 resources** across **9 federal APIs + 9 provincial APIs + 2 municipal APIs + 1 local SQLite datastore** — exchange rates, parliamentary data, product recalls, drug information, 80K+ open datasets, food nutrition data, real-time weather, immigration statistics, Ontario provincial data, Toronto municipal data, York Region ArcGIS Hub data, British Columbia CKAN + WFS geospatial data, Quebec Données Québec CKAN + ArcGIS IQA data, Alberta open data + AER energy + WMBappServices wildfire + AHSGIS health + 511 Alberta transport, Manitoba geoportal (ArcGIS Hub) + 511 Manitoba transport, Saskatchewan geoportal (ArcGIS Hub) + WSA water infrastructure + SPSA fire bans, Nova Scotia Socrata SODA portal (data.novascotia.ca), New Brunswick federal-CKAN discovery + GeoNB bare ArcGIS Server geospatial data + gnb.socrata.com Socrata portal + key-gated 511 NB transport, and persistent local storage. All bilingual (English/French).
 
 > **First ArcGIS Hub module** — shared infrastructure in `shared/arcgis_hub.py` is reusable for future Canadian municipal modules (BC, Calgary, Edmonton, and other cities publishing via ArcGIS Hub).
 > **First OGC WFS module** — BC introduces WFS 2.0 (OGC) support via `shared/ogc.py`, making WFS the third portal technology alongside CKAN and ArcGIS Hub. See `docs://bc/wfs-query-guide` for the CKAN→WFS two-step workflow.
@@ -129,7 +129,7 @@ All tools accept `lang: "en" | "fr"` for bilingual support. Responses include a 
 | [Nutrient File](docs/modules/nutrient-file.md) | Federal | 8 | 5 | 7 | Food nutrition data — [Canadian Nutrient File](https://food-nutrition.canada.ca/api/canadian-nutrient-file/) |
 | [Open Parliament](docs/modules/open-parliament.md) | Federal | 10 | 5 | 7 | Bills, MPs, votes, ballots, Hansard debates — [Open Parliament API](https://api.openparliament.ca/) |
 | [Recalls & Safety](docs/modules/recalls.md) | Federal | 6 | 4 | 6 | Food, vehicle, and health product recalls — [Healthy Canadians](https://healthycanadians.gc.ca/recall-alert-rappel-avis/api/) |
-| [Statistics Canada](docs/modules/statcan.md) | Federal | 15 | 6 | 8 | Time series, cube metadata, SDMX filtering — [StatCan WDS](https://www.statcan.gc.ca/en/developers/wds) |
+| [Statistics Canada](docs/modules/statcan.md) | Federal | 16 | 6 | 8 | Time series, cube metadata, SDMX filtering — [StatCan WDS](https://www.statcan.gc.ca/en/developers/wds) |
 | [Weather](docs/modules/weather.md) | Federal | 34 | 6 | 8 | Conditions, climate, air quality, hydrology, marine, radar — [MSC GeoMet](https://api.weather.gc.ca/) |
 | [Alberta](docs/modules/alberta.md) | Provincial | 24 | 6 | 7 | CKAN + AER energy + WMBappServices wildfire + AHSGIS health + 511 Alberta — [open.alberta.ca](https://open.alberta.ca) |
 | [British Columbia](docs/modules/british-columbia.md) | Provincial | 20 | 6 | 7 | CKAN + WFS geospatial — [BC Data Catalogue](https://catalogue.data.gov.bc.ca) |
@@ -205,7 +205,7 @@ src/mcp_canada/
     ├── quebec/            # 18 tools — Données Québec CKAN
     ├── alberta/           # 24 tools — open.alberta.ca CKAN + AER + WMB + AHSGIS + 511
     ├── nova_scotia/       # 16 tools — data.novascotia.ca Socrata SODA
-    ├── statcan/           # 15 tools — Statistics Canada WDS + SDMX
+    ├── statcan/           # 16 tools — Statistics Canada WDS + SDMX
     └── weather/           # 34 tools — MSC GeoMet OGC API
         ├── current/       # 5 tools — realtime conditions, forecast, alerts
         ├── climate/       # 7 tools — daily/monthly/normals/trends

@@ -248,6 +248,7 @@ Data is organized into **cubes** (datasets) identified by a **productId**
 | `sc_get_changed_series` | List vectors updated on a specific release date |
 | `sc_get_changed_cubes` | List cubes updated on a specific release date |
 | `sc_fetch_vectors_to_store` | Fetch vectors and store them in the local SQLite datastore |
+| `sc_get_toronto_rents` | Toronto CMHC average rents by bedroom type + vacancy rate, one row per year |
 
 ## Data Availability
 

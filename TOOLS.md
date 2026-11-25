@@ -4,7 +4,7 @@ Auto-generated from source. Do not edit manually.
 Run `uv run python scripts/generate_catalog.py` to regenerate.
 Browse the [documentation site](https://reyemtech.github.io/mcp-canada/tools/) for searchable navigation.
 
-**295 tools** across 21 modules.
+**296 tools** across 21 modules.
 
 ## Module: Meta / Discovery (3 tools)
 
@@ -2522,7 +2522,7 @@ Get WSA reservoir locations with reservoir name, dam name, and water level (MASL
 |-----------|------|---------|-------------|
 | `lang` | `Literal['en', 'fr']` | `'en'` | — |
 
-## Module: statcan (15 tools)
+## Module: statcan (16 tools)
 
 Statistics Canada tools: search tables, retrieve metadata, fetch time series data, and monitor data changes.
 
@@ -2676,6 +2676,15 @@ Fetch multiple StatCan vectors and store them to the shared datastore for SQL qu
 | `start_release` | `str` | — | — |
 | `end_release` | `str` | — | — |
 | `table_name` | `str` | — | — |
+| `lang` | `Literal['en', 'fr']` | `'en'` | — |
+
+### `sc_get_toronto_rents`
+
+Get yearly average apartment rents by bedroom type and the vacancy rate for Toronto.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `years` | `int` | `10` | — |
 | `lang` | `Literal['en', 'fr']` | `'en'` | — |
 
 ## Module: toronto (12 tools)

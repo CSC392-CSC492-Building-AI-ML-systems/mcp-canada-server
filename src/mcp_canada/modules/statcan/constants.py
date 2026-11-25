@@ -95,3 +95,26 @@ SCALAR_FACTOR_CODES: dict[int, str] = {
     8: "hundreds of millions",
     9: "billions",
 }
+
+# ---------------------------------------------------------------------------
+# Toronto rents (sc_get_toronto_rents)
+# ---------------------------------------------------------------------------
+
+# Table 34-10-0133-01: CMHC average rents for areas with a population of
+# 10,000 and over. October survey, private apartment buildings with 3+ units.
+# Coordinate = geography (125 = Toronto CMA) . structure (1) . unit type.
+TORONTO_RENT_PRODUCT_ID = 34100133
+TORONTO_RENT_COORDS: dict[str, str] = {
+    "bachelor": "125.1.1",
+    "one_bedroom": "125.1.2",
+    "two_bedroom": "125.1.3",
+    "three_bedroom_plus": "125.1.4",
+}
+
+# Table 34-10-0127-01: CMHC vacancy rates, apartment structures of six units
+# and over. No bedroom split; coordinate 23 = Toronto CMA.
+TORONTO_VACANCY_PRODUCT_ID = 34100127
+TORONTO_VACANCY_COORD = "23"
+
+# Cap on the years parameter (the rent series starts in the late 1980s)
+TORONTO_RENTS_MAX_YEARS = 30
