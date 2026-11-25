@@ -25,6 +25,11 @@ from mcp_canada.modules.toronto.constants import (
     CACHE_TTL_GTFS,
     CACHE_TTL_META,
     CACHE_TTL_SEARCH,
+    CRIME_RATES_LAYER_ID,
+    CRIME_RATES_MAX_RECORDS,
+    CRIME_RATES_SERVICE_URL,
+    CRIME_TYPES,
+    CRIME_YEARS,
     DEFAULT_PROFILE_YEAR,
     GTFS_DATASET_ID,
     MAX_DESCRIPTION_CHARS,
@@ -39,6 +44,7 @@ from mcp_canada.modules.toronto.constants import (
     SERVICE_REQUESTS_DATASET_ID,
     SHORT_TERM_RENTALS_RESOURCE_ID,
 )
+from mcp_canada.shared import arcgis_hub
 from mcp_canada.shared.cache import cached_fetch
 from mcp_canada.shared.parsers import _parse_csv
 from mcp_canada.shared.rate_limiter import get_limiter
@@ -977,6 +983,140 @@ async def fetch_short_term_rentals(
         ]
 
     return records, was_cached
+
+
+# ---------------------------------------------------------------------------
+# Toronto Police neighbourhood crime rates (ArcGIS)
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_crime_rows() -> tuple[list[dict[str, Any]], bool]:
+    """Fetch every row of the Toronto Police neighbourhood crime rates layer.
+
+    Returns:
+        (list of raw attribute dicts, one per neighbourhood, was_cached)
+
+    Raises:
+        UpstreamData: The layer returned no rows.
+    """
+    limiter = get_limiter(RATE_GROUP, rate=RATE_LIMIT)
+
+    async def fetcher() -> list[dict[str, Any]]:
+        await limiter.acquire()
+        features, _truncated = await arcgis_hub.query_feature_service(
+            CRIME_RATES_SERVICE_URL,
+            layer_id=CRIME_RATES_LAYER_ID,
+            max_records=CRIME_RATES_MAX_RECORDS,
+        )
+        if not features:
+            raise UpstreamData("Toronto Police crime rates layer returned no rows")
+        return features
+
+    return await cached_fetch("toronto:crime-rates", CACHE_TTL_DATA, fetcher)
+
+
+def _hood_number(value: Any) -> str | None:
+    """Turn the layer's HOOD_ID (a float such as 174.0) into "174"."""
+    try:
+        return str(int(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _shape_crime_row(
+    row: dict[str, Any],
+    crime_types: list[str],
+    years: list[int],
+) -> dict[str, Any]:
+    """Shape one layer row into counts and rates per crime type and year.
+
+    Years with neither a count nor a rate are left out.
+    """
+    crimes: dict[str, dict[str, dict[str, Any]]] = {}
+    for name in crime_types:
+        prefix = CRIME_TYPES[name]
+        by_year: dict[str, dict[str, Any]] = {}
+        for year in years:
+            count = row.get(f"{prefix}_{year}")
+            rate = row.get(f"{prefix}_RATE_{year}")
+            if count is None and rate is None:
+                continue
+            by_year[str(year)] = {
+                "count": count,
+                "rate_per_100k": round(rate, 1) if rate is not None else None,
+            }
+        crimes[name] = by_year
+    return {
+        "neighbourhood": row.get("AREA_NAME"),
+        "neighbourhood_number": _hood_number(row.get("HOOD_ID")),
+        "population_2025": row.get("POPULATION_2025"),
+        "crimes": crimes,
+    }
+
+
+async def fetch_neighbourhood_crime_rates(
+    neighbourhood: str | None = None,
+    crime_type: str | None = None,
+    year: int | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Fetch Toronto Police crime counts and rates per 100,000 by neighbourhood.
+
+    Uses the 158-neighbourhood model. With no neighbourhood the whole city is
+    returned, and to keep that answer small it defaults to the latest year
+    when no year is given.
+
+    Args:
+        neighbourhood: Name, unique partial name or number (e.g. "Annex", "95").
+            None returns all 158 neighbourhoods.
+        crime_type: One key of CRIME_TYPES (e.g. "assault"). None returns all.
+        year: One year in CRIME_YEARS. None returns all years for one
+            neighbourhood, or the latest year city-wide.
+
+    Returns:
+        ({"years": [...], "crime_types": [...], "count": N,
+          "neighbourhoods": [...]}, was_cached)
+
+    Raises:
+        InvalidInput: Unknown crime type, year or neighbourhood.
+    """
+    if crime_type is not None and crime_type not in CRIME_TYPES:
+        raise InvalidInput(
+            f"Unknown crime_type {crime_type!r}. Use one of: {', '.join(CRIME_TYPES)}."
+        )
+    if year is not None and year not in CRIME_YEARS:
+        raise InvalidInput(
+            f"year must be between {CRIME_YEARS[0]} and {CRIME_YEARS[-1]}, got {year}"
+        )
+
+    rows, was_cached = await _fetch_crime_rows()
+
+    if neighbourhood is not None:
+        names = [row["AREA_NAME"] for row in rows if row.get("AREA_NAME")]
+        numbers = {
+            row["AREA_NAME"]: number
+            for row in rows
+            if row.get("AREA_NAME") and (number := _hood_number(row.get("HOOD_ID")))
+        }
+        name = _resolve_neighbourhood(names, numbers, neighbourhood)
+        rows = [row for row in rows if row.get("AREA_NAME") == name]
+    else:
+        rows = sorted(rows, key=lambda row: _normalize_text(row.get("AREA_NAME")))
+
+    if year is not None:
+        years = [year]
+    elif neighbourhood is None:
+        years = [CRIME_YEARS[-1]]
+    else:
+        years = list(CRIME_YEARS)
+    crime_types = [crime_type] if crime_type else list(CRIME_TYPES)
+
+    shaped = [_shape_crime_row(row, crime_types, years) for row in rows]
+    return {
+        "years": years,
+        "crime_types": crime_types,
+        "count": len(shaped),
+        "neighbourhoods": shaped,
+    }, was_cached
 
 
 # ---------------------------------------------------------------------------

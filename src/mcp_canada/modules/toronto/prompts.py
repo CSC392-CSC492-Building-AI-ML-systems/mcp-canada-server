@@ -82,6 +82,7 @@ async def toronto_explore_neighbourhood(
     """Guide an agent through a Toronto neighbourhood analysis.
 
     Chains toronto_get_neighbourhood_profile -> toronto_compare_neighbourhoods
+    -> toronto_get_neighbourhood_crime_rates
     to explore socioeconomic and demographic characteristics of Toronto neighbourhoods.
     """
     if lang == "fr":
@@ -98,6 +99,8 @@ async def toronto_explore_neighbourhood(
                 "socioéconomique complet du quartier. Si vous souhaitez comparer deux quartiers, "
                 "j'utiliserai toronto_compare_neighbourhoods. Les données proviennent des "
                 "recensements de 2001, 2006, 2011, 2016 et 2021 (paramètre year, 2016 par défaut). "
+                "Pour le nombre de crimes et les taux pour 100 000 habitants (2014-2025, "
+                "modèle à 158 quartiers), j'utiliserai toronto_get_neighbourhood_crime_rates. "
                 "Commençons.",
                 role="assistant",
             ),
@@ -113,7 +116,9 @@ async def toronto_explore_neighbourhood(
             "I will use toronto_get_neighbourhood_profile to retrieve the full socioeconomic "
             "profile. If you want to compare two neighbourhoods, I will use "
             "toronto_compare_neighbourhoods. Data comes from the 2001, 2006, 2011, 2016 "
-            "and 2021 censuses (year parameter, 2016 by default). Let's get started.",
+            "and 2021 censuses (year parameter, 2016 by default). For crime counts and rates "
+            "per 100,000 (2014-2025, 158-neighbourhood model) I will use "
+            "toronto_get_neighbourhood_crime_rates. Let's get started.",
             role="assistant",
         ),
     ]

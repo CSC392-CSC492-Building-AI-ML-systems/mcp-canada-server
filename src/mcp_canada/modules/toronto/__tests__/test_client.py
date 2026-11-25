@@ -1194,3 +1194,165 @@ class TestGtfsUrlIsResolvedFromCkan:
             "GTFS_ZIP_URL pinned a resource id that Toronto has since changed. "
             "Resolve the URL from CKAN package_show instead."
         )
+
+
+# ---------------------------------------------------------------------------
+# TestFetchNeighbourhoodCrimeRates
+# ---------------------------------------------------------------------------
+
+_CRIME_ROWS: list[dict[str, Any]] = [
+    {
+        "AREA_NAME": "Yonge-Bay Corridor",
+        "HOOD_ID": 170.0,
+        "POPULATION_2025": 12000,
+        "ASSAULT_2024": 500,
+        "ASSAULT_RATE_2024": 4166.66666,
+        "ASSAULT_2025": 480,
+        "ASSAULT_RATE_2025": 4000.04,
+        "HOMICIDE_2025": 1,
+        "HOMICIDE_RATE_2025": 8.33333,
+    },
+    {
+        "AREA_NAME": "Annex",
+        "HOOD_ID": 95.0,
+        "POPULATION_2025": 30000,
+        "ASSAULT_2024": 150,
+        "ASSAULT_RATE_2024": 500.0,
+        "ASSAULT_2025": 120,
+        "ASSAULT_RATE_2025": 400.0,
+        "HOMICIDE_2025": 0,
+        "HOMICIDE_RATE_2025": 0.0,
+    },
+]
+
+
+def _patch_crime_layer(rows: list[dict[str, Any]]):
+    """Patch the ArcGIS call, cache and limiter for the crime rates client."""
+    query = AsyncMock(return_value=(rows, False))
+    patches = (
+        patch("mcp_canada.modules.toronto.client.arcgis_hub.query_feature_service", new=query),
+        patch("mcp_canada.modules.toronto.client.cached_fetch",
+              side_effect=_make_fake_cached_fetch(None)),
+        patch("mcp_canada.modules.toronto.client.get_limiter",
+              return_value=_make_mock_limiter()),
+    )
+    return query, patches
+
+
+class TestFetchNeighbourhoodCrimeRates:
+    @pytest.mark.asyncio
+    async def test_one_neighbourhood_by_name_gets_every_year(self) -> None:
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_crime_rates
+        from mcp_canada.modules.toronto.constants import CRIME_YEARS
+
+        query, (p1, p2, p3) = _patch_crime_layer(_CRIME_ROWS)
+        with p1, p2, p3:
+            data, _ = await fetch_neighbourhood_crime_rates(neighbourhood="annex")
+
+        assert data["years"] == list(CRIME_YEARS)
+        assert data["count"] == 1
+        row = data["neighbourhoods"][0]
+        assert row["neighbourhood"] == "Annex"
+        assert row["neighbourhood_number"] == "95"
+        assert row["population_2025"] == 30000
+        # Years missing from the layer are left out.
+        assert row["crimes"]["assault"] == {
+            "2024": {"count": 150, "rate_per_100k": 500.0},
+            "2025": {"count": 120, "rate_per_100k": 400.0},
+        }
+        assert row["crimes"]["robbery"] == {}
+
+    @pytest.mark.asyncio
+    async def test_neighbourhood_by_number(self) -> None:
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_crime_rates
+
+        _, (p1, p2, p3) = _patch_crime_layer(_CRIME_ROWS)
+        with p1, p2, p3:
+            data, _ = await fetch_neighbourhood_crime_rates(neighbourhood="170")
+
+        assert data["neighbourhoods"][0]["neighbourhood"] == "Yonge-Bay Corridor"
+
+    @pytest.mark.asyncio
+    async def test_city_wide_defaults_to_latest_year_sorted_by_name(self) -> None:
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_crime_rates
+
+        _, (p1, p2, p3) = _patch_crime_layer(_CRIME_ROWS)
+        with p1, p2, p3:
+            data, _ = await fetch_neighbourhood_crime_rates()
+
+        assert data["years"] == [2025]
+        assert [r["neighbourhood"] for r in data["neighbourhoods"]] == [
+            "Annex", "Yonge-Bay Corridor",
+        ]
+        assert list(data["neighbourhoods"][0]["crimes"]["assault"]) == ["2025"]
+
+    @pytest.mark.asyncio
+    async def test_crime_type_and_year_filter_and_round(self) -> None:
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_crime_rates
+
+        _, (p1, p2, p3) = _patch_crime_layer(_CRIME_ROWS)
+        with p1, p2, p3:
+            data, _ = await fetch_neighbourhood_crime_rates(crime_type="homicide", year=2025)
+
+        assert data["crime_types"] == ["homicide"]
+        yonge = data["neighbourhoods"][1]
+        assert list(yonge["crimes"]) == ["homicide"]
+        assert yonge["crimes"]["homicide"]["2025"] == {"count": 1, "rate_per_100k": 8.3}
+
+    @pytest.mark.asyncio
+    async def test_queries_the_police_layer(self) -> None:
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_crime_rates
+        from mcp_canada.modules.toronto.constants import (
+            CRIME_RATES_LAYER_ID,
+            CRIME_RATES_MAX_RECORDS,
+            CRIME_RATES_SERVICE_URL,
+        )
+
+        query, (p1, p2, p3) = _patch_crime_layer(_CRIME_ROWS)
+        with p1, p2, p3:
+            await fetch_neighbourhood_crime_rates()
+
+        query.assert_awaited_once_with(
+            CRIME_RATES_SERVICE_URL,
+            layer_id=CRIME_RATES_LAYER_ID,
+            max_records=CRIME_RATES_MAX_RECORDS,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "kwargs",
+        [{"crime_type": "arson"}, {"year": 2013}, {"year": 2026}],
+    )
+    async def test_rejects_bad_input_before_fetching(self, kwargs: dict[str, Any]) -> None:
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_crime_rates
+        from mcp_canada.shared.errors import InvalidInput
+
+        query, (p1, p2, p3) = _patch_crime_layer(_CRIME_ROWS)
+        with p1, p2, p3, pytest.raises(InvalidInput):
+            await fetch_neighbourhood_crime_rates(**kwargs)
+        query.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unknown_neighbourhood(self) -> None:
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_crime_rates
+        from mcp_canada.shared.errors import InvalidInput
+
+        _, (p1, p2, p3) = _patch_crime_layer(_CRIME_ROWS)
+        with p1, p2, p3, pytest.raises(InvalidInput, match="Unknown neighbourhood"):
+            await fetch_neighbourhood_crime_rates(neighbourhood="Atlantis")
+
+    @pytest.mark.asyncio
+    async def test_empty_layer_is_upstream_error(self) -> None:
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_crime_rates
+        from mcp_canada.shared.errors import UpstreamData
+
+        _, (p1, p2, p3) = _patch_crime_layer([])
+        with p1, p2, p3, pytest.raises(UpstreamData):
+            await fetch_neighbourhood_crime_rates()
+
+    def test_hood_number_handles_missing_values(self) -> None:
+        from mcp_canada.modules.toronto.client import _hood_number
+
+        assert _hood_number(174.0) == "174"
+        assert _hood_number(None) is None
+        assert _hood_number("n/a") is None

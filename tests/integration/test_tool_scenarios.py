@@ -611,6 +611,31 @@ class TestTorontoToolScenarios:
         assert "Annex" in data["data"][0]
 
     @pytest.mark.asyncio
+    @pytest.mark.timeout(60)
+    async def test_toronto_crime_rates_neighbourhood(self, mcp_server):
+        """'How many assaults were there in the Annex in 2025?'"""
+        data = await call_tool(mcp_server, "toronto_get_neighbourhood_crime_rates", {
+            "neighbourhood": "Annex",
+            "crime_type": "assault",
+            "year": 2025,
+        })
+        row = data["data"]["neighbourhoods"][0]
+        assert row["neighbourhood"] == "Annex"
+        assault = row["crimes"]["assault"]["2025"]
+        assert isinstance(assault["count"], int) and assault["count"] >= 0
+        assert assault["rate_per_100k"] >= 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(60)
+    async def test_toronto_crime_rates_city_wide(self, mcp_server):
+        """'Which Toronto neighbourhoods have the most break and enters?'"""
+        data = await call_tool(mcp_server, "toronto_get_neighbourhood_crime_rates", {
+            "crime_type": "break_and_enter",
+        })
+        assert data["data"]["count"] == 158
+        assert data["data"]["years"] == [2025]
+
+    @pytest.mark.asyncio
     @pytest.mark.timeout(30)
     async def test_toronto_rentsafe(self, mcp_server):
         """'Show me apartment buildings in Ward 10.'"""

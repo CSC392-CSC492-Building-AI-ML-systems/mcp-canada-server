@@ -1,9 +1,10 @@
 """Toronto Open Data @tool functions.
 
-Provides 12 intent-based MCP tools for querying the City of Toronto's
+Provides 13 intent-based MCP tools for querying the City of Toronto's
 Open Data portal (open.toronto.ca) with 500+ municipal datasets.
 Includes TTC GTFS transit data, neighbourhood census profiles,
-311 service requests, RentSafeTO evaluations, and short-term rentals.
+311 service requests, RentSafeTO evaluations, short-term rentals,
+and Toronto Police neighbourhood crime rates.
 
 Each tool follows the 5-file module pattern:
 - Standalone @tool decorator (NOT @mcp.tool)
@@ -24,6 +25,7 @@ from mcp_canada.modules.toronto.client import (
     fetch_gtfs_routes,
     fetch_gtfs_stops,
     fetch_neighbourhood_comparison,
+    fetch_neighbourhood_crime_rates,
     fetch_neighbourhood_profile,
     fetch_organizations,
     fetch_rentsafe_evaluations,
@@ -485,6 +487,56 @@ async def toronto_get_short_term_rentals(
 
     return make_response(
         rentals,
+        api_name=_API_NAME,
+        api_url=_API_URL,
+        cached=cached,
+        lang=lang,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tool 13: Get neighbourhood crime rates
+# ---------------------------------------------------------------------------
+
+
+@tool
+@upstream_guard(_API_NAME)
+async def toronto_get_neighbourhood_crime_rates(
+    neighbourhood: str | None = None,
+    crime_type: Literal[
+        "assault",
+        "auto_theft",
+        "bike_theft",
+        "break_and_enter",
+        "homicide",
+        "robbery",
+        "shooting",
+        "theft_from_vehicle",
+        "theft_over",
+    ] | None = None,
+    year: int | None = None,
+    lang: Literal["en", "fr"] = "en",
+) -> dict[str, Any]:
+    """Get Toronto Police Service crime counts and rates per 100,000 people by neighbourhood.
+
+    Yearly figures from 2014 to 2025 on the 158-neighbourhood model (the same names and numbers
+    as the 2021 census profile). `neighbourhood` accepts a full name ("Annex"), a unique partial
+    name or the neighbourhood number ("95"); leave it out for all 158 neighbourhoods.
+    `crime_type` picks one of nine types, or all when left out. `year` picks one year; when it
+    is left out, one neighbourhood gets every year and the whole city gets the latest year.
+    Rates use each year's projected population. Unfounded reports are excluded and locations are
+    offset to the nearest intersection, so counts are approximate. Source: Toronto Police Service
+    Public Safety Data Portal, Open Government Licence - Ontario.
+    Use for: crime rates or trends in a Toronto neighbourhood, comparing or ranking neighbourhoods by assault, break and enter, auto theft, shootings or homicides, neighbourhood safety questions.
+    Keywords: crime, crime rate, police, safety, assault, auto theft, car theft, bike theft, break and enter, burglary, homicide, robbery, shooting, theft, neighbourhood, Toronto, TPS, per 100000.
+    """
+    data, cached = await fetch_neighbourhood_crime_rates(
+        neighbourhood=neighbourhood,
+        crime_type=crime_type,
+        year=year,
+    )
+    return make_response(
+        data,
         api_name=_API_NAME,
         api_url=_API_URL,
         cached=cached,
