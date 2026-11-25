@@ -545,6 +545,94 @@ class TestTorontoGetTtcRoutes:
         assert "Keywords:" in doc
 
 
+class TestTorontoGetTtcStopsLimit:
+    """toronto_get_ttc_stops caps the stops it returns."""
+
+    _MANY_STOPS = [
+        {"stop_id": str(n), "stop_name": f"Stop {n}", "stop_lat": "43.6", "stop_lon": "-79.4"}
+        for n in range(150)
+    ]
+
+    @pytest.mark.asyncio
+    async def test_limit_caps_rows(self):
+        tools = import_tools()
+        with patch(
+            "mcp_canada.modules.toronto.tools.fetch_gtfs_stops",
+            new=AsyncMock(return_value=(self._MANY_STOPS, False)),
+        ):
+            result = await tools.toronto_get_ttc_stops(limit=2)
+
+        assert [s["stop_id"] for s in result["data"]] == ["0", "1"]
+
+    @pytest.mark.asyncio
+    async def test_default_limit_is_100(self):
+        tools = import_tools()
+        with patch(
+            "mcp_canada.modules.toronto.tools.fetch_gtfs_stops",
+            new=AsyncMock(return_value=(self._MANY_STOPS, False)),
+        ):
+            result = await tools.toronto_get_ttc_stops()
+
+        assert len(result["data"]) == 100
+
+    @pytest.mark.asyncio
+    async def test_limit_below_one_is_invalid_input(self):
+        tools = import_tools()
+        fetch = AsyncMock(return_value=(self._MANY_STOPS, False))
+        with patch("mcp_canada.modules.toronto.tools.fetch_gtfs_stops", new=fetch):
+            result = await tools.toronto_get_ttc_stops(limit=0)
+
+        assert result["error"]["code"] == "INVALID_INPUT"
+        fetch.assert_not_called()
+
+
+class TestTtcToolsErrorDetail:
+    """TTC tools report why the upstream call failed (via upstream_guard)."""
+
+    _REQUEST = httpx.Request("GET", "https://ckan0.cf.opendata.inter.prod-toronto.ca/r1")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("tool_name", "fetcher"),
+        [
+            ("toronto_get_ttc_stops", "fetch_gtfs_stops"),
+            ("toronto_get_ttc_routes", "fetch_gtfs_routes"),
+        ],
+    )
+    async def test_http_status_appears_in_message(self, tool_name, fetcher):
+        tools = import_tools()
+        response = httpx.Response(502, request=self._REQUEST)
+        error = httpx.HTTPStatusError("Bad Gateway", request=self._REQUEST, response=response)
+        with patch(
+            f"mcp_canada.modules.toronto.tools.{fetcher}",
+            new=AsyncMock(side_effect=error),
+        ):
+            result = await getattr(tools, tool_name)()
+
+        assert result["error"]["code"] == "UPSTREAM_ERROR"
+        assert "HTTP 502" in result["error"]["message"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("tool_name", "fetcher"),
+        [
+            ("toronto_get_ttc_stops", "fetch_gtfs_stops"),
+            ("toronto_get_ttc_routes", "fetch_gtfs_routes"),
+        ],
+    )
+    async def test_timeout_appears_in_message(self, tool_name, fetcher):
+        tools = import_tools()
+        error = httpx.ReadTimeout("timed out", request=self._REQUEST)
+        with patch(
+            f"mcp_canada.modules.toronto.tools.{fetcher}",
+            new=AsyncMock(side_effect=error),
+        ):
+            result = await getattr(tools, tool_name)()
+
+        assert result["error"]["code"] == "UPSTREAM_ERROR"
+        assert "ReadTimeout" in result["error"]["message"]
+
+
 # ---------------------------------------------------------------------------
 # Tool 8: toronto_get_neighbourhood_profile
 # ---------------------------------------------------------------------------

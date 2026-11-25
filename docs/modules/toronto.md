@@ -21,7 +21,7 @@ All tools accept `lang: "en" | "fr"` for bilingual support.
 <!-- CATALOG:toronto_curated:start -->
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `toronto_get_ttc_stops` | Search TTC (Toronto Transit Commission) stops by name from GTFS static schedule. | `query` |
+| `toronto_get_ttc_stops` | Search TTC (Toronto Transit Commission) stops by name from GTFS static schedule. | `query`, `limit` |
 | `toronto_get_ttc_routes` | List TTC (Toronto Transit Commission) routes from GTFS static schedule data. | `route_type` |
 | `toronto_get_neighbourhood_profile` | Get census indicator data for Toronto neighbourhoods from the Neighbourhood Profiles dataset. | `neighbourhood`, `characteristic`, `limit`, `year` |
 | `toronto_compare_neighbourhoods` | Compare a single census indicator across all 140 Toronto neighbourhoods. | `characteristic`, `limit`, `year` |
