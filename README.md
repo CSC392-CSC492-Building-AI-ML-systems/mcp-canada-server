@@ -18,7 +18,7 @@
 
 ---
 
-**296 tools, ~107 prompts, and ~141 resources** across **9 federal APIs + 9 provincial APIs + 2 municipal APIs + 1 local SQLite datastore** — exchange rates, parliamentary data, product recalls, drug information, 80K+ open datasets, food nutrition data, real-time weather, immigration statistics, Ontario provincial data, Toronto municipal data, York Region ArcGIS Hub data, British Columbia CKAN + WFS geospatial data, Quebec Données Québec CKAN + ArcGIS IQA data, Alberta open data + AER energy + WMBappServices wildfire + AHSGIS health + 511 Alberta transport, Manitoba geoportal (ArcGIS Hub) + 511 Manitoba transport, Saskatchewan geoportal (ArcGIS Hub) + WSA water infrastructure + SPSA fire bans, Nova Scotia Socrata SODA portal (data.novascotia.ca), New Brunswick federal-CKAN discovery + GeoNB bare ArcGIS Server geospatial data + gnb.socrata.com Socrata portal + key-gated 511 NB transport, and persistent local storage. All bilingual (English/French).
+**297 tools, ~107 prompts, and ~141 resources** across **9 federal APIs + 9 provincial APIs + 2 municipal APIs + 1 local SQLite datastore** — exchange rates, parliamentary data, product recalls, drug information, 80K+ open datasets, food nutrition data, real-time weather, immigration statistics, Ontario provincial data, Toronto municipal data, York Region ArcGIS Hub data, British Columbia CKAN + WFS geospatial data, Quebec Données Québec CKAN + ArcGIS IQA data, Alberta open data + AER energy + WMBappServices wildfire + AHSGIS health + 511 Alberta transport, Manitoba geoportal (ArcGIS Hub) + 511 Manitoba transport, Saskatchewan geoportal (ArcGIS Hub) + WSA water infrastructure + SPSA fire bans, Nova Scotia Socrata SODA portal (data.novascotia.ca), New Brunswick federal-CKAN discovery + GeoNB bare ArcGIS Server geospatial data + gnb.socrata.com Socrata portal + key-gated 511 NB transport, and persistent local storage. All bilingual (English/French).
 
 > **First ArcGIS Hub module** — shared infrastructure in `shared/arcgis_hub.py` is reusable for future Canadian municipal modules (BC, Calgary, Edmonton, and other cities publishing via ArcGIS Hub).
 > **First OGC WFS module** — BC introduces WFS 2.0 (OGC) support via `shared/ogc.py`, making WFS the third portal technology alongside CKAN and ArcGIS Hub. See `docs://bc/wfs-query-guide` for the CKAN→WFS two-step workflow.
@@ -139,7 +139,7 @@ All tools accept `lang: "en" | "fr"` for bilingual support. Responses include a 
 | [Nova Scotia](docs/modules/nova-scotia.md) | Provincial | 16 | 6 | 7 | Socrata SODA portal (aquaculture, environment, health) — [data.novascotia.ca](https://data.novascotia.ca) |
 | [Ontario](docs/modules/ontario.md) | Provincial | 6 | 4 | 6 | 3,000+ provincial datasets — [Ontario Open Data](https://data.ontario.ca) |
 | [Quebec](docs/modules/quebec.md) | Provincial | 18 | 6 | 7 | Federated CKAN (139 orgs) — [Données Québec](https://www.donneesquebec.ca) |
-| [Toronto](docs/modules/toronto.md) | Municipal | 12 | 6 | 8 | TTC, neighbourhoods, 311, RentSafe — [Toronto Open Data](https://open.toronto.ca) |
+| [Toronto](docs/modules/toronto.md) | Municipal | 13 | 6 | 8 | TTC, neighbourhoods, 311, RentSafe, crime — [Toronto Open Data](https://open.toronto.ca) |
 | [York Region](docs/modules/york-region.md) | Municipal | 27 | 5 | 8 | 4 ArcGIS Hub portals (York Region, Markham, Newmarket, Aurora) |
 | [Local Datastore](docs/modules/datastore.md) | Local | 6 | 4 | 6 | SQLite persistence for cross-API SQL JOINs — `~/.mcp-canada/datastore.db` |
 | **Total** | | **295** | **~107** | **~141** | |
@@ -197,7 +197,7 @@ src/mcp_canada/
     ├── datastore/         # 6 tools — local SQLite persistence
     ├── ircc/              # 10 tools — IRCC Immigration Open Data
     ├── ontario/           # 6 tools — Ontario Open Data Catalogue
-    ├── toronto/           # 12 tools — City of Toronto Open Data Portal
+    ├── toronto/           # 13 tools — City of Toronto Open Data Portal
     ├── york_region/       # 27 tools — York Region ArcGIS Hub (4 portals)
     ├── british_columbia/  # 20 tools — BC Data Catalogue + WFS
     ├── manitoba/          # 20 tools — geoportal.gov.mb.ca ArcGIS Hub + 511 Manitoba

@@ -975,3 +975,55 @@ class TestTorontoGetShortTermRentals:
         doc = tools.toronto_get_short_term_rentals.__doc__ or ""
         assert "Use for:" in doc
         assert "Keywords:" in doc
+
+
+# ---------------------------------------------------------------------------
+# Tool 13: toronto_get_neighbourhood_crime_rates
+# ---------------------------------------------------------------------------
+
+_CRIME_DATA = {
+    "years": [2025],
+    "crime_types": ["assault"],
+    "count": 1,
+    "neighbourhoods": [{"neighbourhood": "Annex", "crimes": {}}],
+}
+
+
+class TestTorontoGetNeighbourhoodCrimeRates:
+
+    @pytest.mark.asyncio
+    async def test_returns_meta_envelope_and_forwards_args(self):
+        tools = import_tools()
+        mock = AsyncMock(return_value=(_CRIME_DATA, False))
+        with patch("mcp_canada.modules.toronto.tools.fetch_neighbourhood_crime_rates", new=mock):
+            result = await tools.toronto_get_neighbourhood_crime_rates(
+                neighbourhood="Annex", crime_type="assault", year=2025, lang="fr",
+            )
+
+        mock.assert_awaited_once_with(neighbourhood="Annex", crime_type="assault", year=2025)
+        assert result["data"] == _CRIME_DATA
+        assert result["_meta"]["lang"] == "fr"
+        assert result["_meta"]["source"] == {
+            "api": "toronto-police-service",
+            "url": "https://data.torontopolice.on.ca",
+        }
+
+    @pytest.mark.asyncio
+    async def test_invalid_input_becomes_error_envelope(self):
+        from mcp_canada.shared.errors import InvalidInput
+
+        tools = import_tools()
+        with patch(
+            "mcp_canada.modules.toronto.tools.fetch_neighbourhood_crime_rates",
+            new=AsyncMock(side_effect=InvalidInput("year must be between 2014 and 2025")),
+        ):
+            result = await tools.toronto_get_neighbourhood_crime_rates(year=1999)
+
+        assert result["error"]["code"] == "INVALID_INPUT"
+
+    @pytest.mark.asyncio
+    async def test_docstring_quality(self):
+        tools = import_tools()
+        doc = tools.toronto_get_neighbourhood_crime_rates.__doc__ or ""
+        assert "Use for:" in doc
+        assert "Keywords:" in doc

@@ -532,6 +532,8 @@ toronto_get_neighbourhood_profile(neighbourhood="Annex", characteristic="populat
 - The City's 2016 file leaves neighbourhood median incomes blank (null)
 - Neighbourhood boundaries and census tracts do not always align perfectly
 - Some indicators show ranges or percentages, not raw counts
+- For crime, use `toronto_get_neighbourhood_crime_rates` (Toronto Police Service,
+  2014-2025, 158-neighbourhood model, same names and numbers as the 2021 profile)
 """
 
 

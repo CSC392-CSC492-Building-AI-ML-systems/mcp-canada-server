@@ -4,7 +4,7 @@ Auto-generated from source. Do not edit manually.
 Run `uv run python scripts/generate_catalog.py` to regenerate.
 Browse the [documentation site](https://reyemtech.github.io/mcp-canada/tools/) for searchable navigation.
 
-**296 tools** across 21 modules.
+**297 tools** across 21 modules.
 
 ## Module: Meta / Discovery (3 tools)
 
@@ -2687,7 +2687,7 @@ Get yearly average apartment rents by bedroom type and the vacancy rate for Toro
 | `years` | `int` | `10` | — |
 | `lang` | `Literal['en', 'fr']` | `'en'` | — |
 
-## Module: toronto (12 tools)
+## Module: toronto (13 tools)
 
 Toronto Municipal Open Data Catalogue (open.toronto.ca). 300+ datasets: TTC transit GTFS (stops, routes, shapes), neighbourhood profiles (140 neighbourhoods, 2,000+ indicators), 311 service requests (annual ZIP+CSV), RentSafeTO apartment building evaluations, short-term rental (Airbnb) registrations, and city budget data. Licensed under the Open Government Licence - Toronto.
 
@@ -2813,6 +2813,17 @@ Query Toronto short-term rental (STR) operator registration records.
 | `ward` | `str | None` | `None` | — |
 | `status` | `str | None` | `None` | — |
 | `limit` | `int` | `100` | — |
+| `lang` | `Literal['en', 'fr']` | `'en'` | — |
+
+### `toronto_get_neighbourhood_crime_rates`
+
+Get Toronto Police Service crime counts and rates per 100,000 people by neighbourhood.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `neighbourhood` | `str | None` | `None` | — |
+| `crime_type` | `Literal['assault', 'auto_theft', 'bike_theft', 'break_and_enter', 'homicide', 'robbery', 'shooting', 'theft_from_vehicle', 'theft_over'] | None` | `None` | — |
+| `year` | `int | None` | `None` | — |
 | `lang` | `Literal['en', 'fr']` | `'en'` | — |
 
 ## Module: york_region (28 tools)

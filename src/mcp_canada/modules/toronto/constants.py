@@ -64,3 +64,28 @@ RENTSAFE_EVAL_RESOURCE_ID = "244f7a02-da5c-425b-b55f-fbdd133dd732"
 
 # Short-Term Rentals — operator registration registry
 SHORT_TERM_RENTALS_RESOURCE_ID = "f4659cc1-8985-4e4a-a702-ae24352271e0"
+
+# Toronto Police Service — Neighbourhood Crime Rates (ArcGIS FeatureServer, 158
+# neighbourhood model, one row per neighbourhood). Field names come from the
+# live layer (?f=json); the ArcGIS Hub's cached field list for this dataset is
+# stale and lists fields that no longer exist.
+CRIME_RATES_SERVICE_URL = (
+    "https://services.arcgis.com/S9th0jAJ7bqgIRjw/arcgis/rest/services/"
+    "Neighbourhood_Crime_Rates_Open_Data/FeatureServer"
+)
+CRIME_RATES_LAYER_ID = 0
+# 158 neighbourhoods fit in one page; the cap is only a guard
+CRIME_RATES_MAX_RECORDS = 500
+# Tool-facing crime type -> layer field prefix (<PREFIX>_<YYYY>, <PREFIX>_RATE_<YYYY>)
+CRIME_TYPES: dict[str, str] = {
+    "assault": "ASSAULT",
+    "auto_theft": "AUTOTHEFT",
+    "bike_theft": "BIKETHEFT",
+    "break_and_enter": "BREAKENTER",
+    "homicide": "HOMICIDE",
+    "robbery": "ROBBERY",
+    "shooting": "SHOOTING",
+    "theft_from_vehicle": "THEFTFROMMV",
+    "theft_over": "THEFTOVER",
+}
+CRIME_YEARS: tuple[int, ...] = tuple(range(2014, 2026))

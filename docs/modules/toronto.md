@@ -1,6 +1,6 @@
 # :city_sunrise: Toronto Open Data
 
-Municipal datasets from the [City of Toronto Open Data Portal](https://open.toronto.ca) (CKAN 2.9 API) with 500+ datasets. Includes TTC transit schedules (GTFS), neighbourhood census profiles, 311 service requests, RentSafeTO apartment evaluations, and short-term rental registrations.
+Municipal datasets from the [City of Toronto Open Data Portal](https://open.toronto.ca) (CKAN 2.9 API) with 500+ datasets. Includes TTC transit schedules (GTFS), neighbourhood census profiles, 311 service requests, RentSafeTO apartment evaluations, short-term rental registrations, and Toronto Police neighbourhood crime rates ([Public Safety Data Portal](https://data.torontopolice.on.ca)).
 
 All tools accept `lang: "en" | "fr"` for bilingual support.
 
@@ -16,7 +16,7 @@ All tools accept `lang: "en" | "fr"` for bilingual support.
 | `toronto_get_dataset_stats` | Get aggregate statistics for the Toronto Open Data portal (open.toronto.ca). | -- |
 <!-- CATALOG:toronto_discovery:end -->
 
-## Tools -- Curated (7)
+## Tools -- Curated (8)
 
 <!-- CATALOG:toronto_curated:start -->
 | Tool | Description | Key Parameters |
