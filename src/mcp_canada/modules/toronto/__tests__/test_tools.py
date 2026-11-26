@@ -1003,6 +1003,10 @@ class TestTorontoGetNeighbourhoodCrimeRates:
         mock.assert_awaited_once_with(neighbourhood="Annex", crime_type="assault", year=2025)
         assert result["data"] == _CRIME_DATA
         assert result["_meta"]["lang"] == "fr"
+        assert result["_meta"]["source"] == {
+            "api": "toronto-police-service",
+            "url": "https://data.torontopolice.on.ca",
+        }
 
     @pytest.mark.asyncio
     async def test_invalid_input_becomes_error_envelope(self):

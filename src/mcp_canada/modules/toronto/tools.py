@@ -39,6 +39,9 @@ from mcp_canada.shared.errors import InvalidInput
 # API name and base URL for _meta envelope
 _API_NAME = "toronto-open-data"
 _API_URL = "https://open.toronto.ca"
+# Crime rates come from the Toronto Police portal, not open.toronto.ca
+_CRIME_API_NAME = "toronto-police-service"
+_CRIME_API_URL = "https://data.torontopolice.on.ca"
 
 
 # ---------------------------------------------------------------------------
@@ -537,8 +540,8 @@ async def toronto_get_neighbourhood_crime_rates(
     )
     return make_response(
         data,
-        api_name=_API_NAME,
-        api_url=_API_URL,
+        api_name=_CRIME_API_NAME,
+        api_url=_CRIME_API_URL,
         cached=cached,
         lang=lang,
     )
