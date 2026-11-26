@@ -554,7 +554,7 @@ class TestFetchDatastoreRecords:
 
 
 # Small stand-ins for the City's profile tables: 2016 labels rows with
-# "Characteristic" and has a "Neighbourhood Number" row; 2006/2011 use "Attribute".
+# "Characteristic" and has a "Neighbourhood Number" row; 2001/2006/2011 use "Attribute".
 _PROFILE_2016 = [
     {"_id": 1, "Category": "Neighbourhood Information", "Topic": "Neighbourhood Information",
      "Data Source": "City of Toronto", "Characteristic": "Neighbourhood Number",
@@ -577,8 +577,15 @@ _PROFILE_2011 = [
 ]
 
 
+_PROFILE_2001 = [
+    {"_id": 2, "Category": "Population", "Topic": "Population",
+     "Attribute": "Population, 2001 - 100% Data", "City of Toronto": 2481494, "Annex": 26888,
+     "Rosedale-Moore Park": 20125, "Moss Park": 11740},
+]
+
+
 def _fake_profile_table(year: int) -> tuple[list[dict[str, Any]], bool]:
-    return ({2016: _PROFILE_2016, 2011: _PROFILE_2011}[year], True)
+    return ({2016: _PROFILE_2016, 2011: _PROFILE_2011, 2001: _PROFILE_2001}[year], True)
 
 
 class TestFetchProfileTable:
@@ -613,7 +620,7 @@ class TestFetchProfileTable:
         from mcp_canada.shared.errors import InvalidInput
 
         with pytest.raises(InvalidInput):
-            await fetch_profile_table(2001)
+            await fetch_profile_table(1996)
 
     @pytest.mark.asyncio
     async def test_empty_table_raises(self) -> None:
@@ -653,6 +660,26 @@ class TestFetchProfileTable:
         ):
             resource = await _resolve_profile_resource(2011)
         assert resource["id"] == "ds-2011"
+
+    @pytest.mark.asyncio
+    async def test_resolves_2001_by_name(self) -> None:
+        """2001's plain .csv file is skipped; its datastore table is used."""
+        from mcp_canada.modules.toronto.client import _resolve_profile_resource
+
+        package = {
+            "resources": [
+                {"id": "file-2001", "name": "neighbourhood-profiles-2001-140-model.csv",
+                 "datastore_active": "True"},
+                {"id": "ds-2001", "name": "neighbourhood-profiles-2001-140-model",
+                 "datastore_active": True},
+            ]
+        }
+        with patch(
+            "mcp_canada.modules.toronto.client._api_get",
+            new=AsyncMock(return_value=(package, False)),
+        ):
+            resource = await _resolve_profile_resource(2001)
+        assert resource["id"] == "ds-2001"
 
     @pytest.mark.asyncio
     async def test_resolves_sheet_year_by_url(self) -> None:
@@ -863,6 +890,24 @@ class TestFetchNeighbourhoodProfile:
                 "Characteristic": "Population, 2011",
                 "City of Toronto": "2,615,060",
                 "Annex": "29,177",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_2001_uses_attribute_and_2016_numbers(self) -> None:
+        """2001 rows are labelled Attribute; numbers are borrowed from 2016."""
+        from mcp_canada.modules.toronto.client import fetch_neighbourhood_profile
+
+        rows, _ = await fetch_neighbourhood_profile(neighbourhood="95", year=2001)
+
+        assert rows == [
+            {
+                "year": 2001,
+                "Category": "Population",
+                "Topic": "Population",
+                "Characteristic": "Population, 2001 - 100% Data",
+                "City of Toronto": 2481494,
+                "Annex": 26888,
             }
         ]
 

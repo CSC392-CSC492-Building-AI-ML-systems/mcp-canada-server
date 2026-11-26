@@ -759,6 +759,22 @@ class TestTorontoCompareNeighbourhoods:
         assert mock.call_args.kwargs["year"] == 2006
 
     @pytest.mark.asyncio
+    async def test_year_2001_passes_to_client(self):
+        """year=2001 reaches the client from both neighbourhood tools."""
+        tools = import_tools()
+        profile = AsyncMock(return_value=(SAMPLE_NEIGHBOURHOOD_PROFILE, False))
+        compare = AsyncMock(return_value=(SAMPLE_NEIGHBOURHOOD_COMPARISON, False))
+        with (
+            patch("mcp_canada.modules.toronto.tools.fetch_neighbourhood_profile", new=profile),
+            patch("mcp_canada.modules.toronto.tools.fetch_neighbourhood_comparison", new=compare),
+        ):
+            await tools.toronto_get_neighbourhood_profile(characteristic="population", year=2001)
+            await tools.toronto_compare_neighbourhoods(characteristic="population", year=2001)
+
+        assert profile.call_args.kwargs["year"] == 2001
+        assert compare.call_args.kwargs["year"] == 2001
+
+    @pytest.mark.asyncio
     async def test_lang_passes_through(self):
         """lang parameter is passed through to the response envelope."""
         tools = import_tools()

@@ -533,7 +533,7 @@ async def fetch_profile_table(
     no datastore table, so its XLSX file is downloaded and parsed instead.
 
     Args:
-        year: Census year (2006, 2011, 2016 or 2021).
+        year: Census year (2001, 2006, 2011, 2016 or 2021).
 
     Returns:
         (list of all profile row dicts, was_cached) — was_cached is True only
@@ -636,7 +636,7 @@ async def _fetch_neighbourhood_numbers(
 ) -> tuple[dict[str, str], bool]:
     """Map each neighbourhood name to its City neighbourhood number.
 
-    2016 and 2021 carry a "Neighbourhood Number" row. 2006 and 2011 do not but
+    2016 and 2021 carry a "Neighbourhood Number" row. 2001, 2006 and 2011 do not but
     use the same 140 names as 2016, so their numbers are taken from 2016.
 
     Args:
@@ -737,7 +737,7 @@ async def fetch_neighbourhood_profile(
             When given, only that neighbourhood's column is returned.
         characteristic: Optional words that must all appear in the characteristic.
         limit: Maximum number of characteristic rows to return (default: 100).
-        year: Census year (2006, 2011, 2016 or 2021; default: 2016).
+        year: Census year (2001, 2006, 2011, 2016 or 2021; default: 2016).
 
     Returns:
         (list of profile row dicts, was_cached)
@@ -778,7 +778,7 @@ async def fetch_neighbourhood_comparison(
     Args:
         characteristic: Words that must all appear in the characteristic.
         limit: Maximum number of matching rows to return (default: 10).
-        year: Census year (2006, 2011, 2016 or 2021; default: 2016).
+        year: Census year (2001, 2006, 2011, 2016 or 2021; default: 2016).
 
     Returns:
         (list of profile row dicts, was_cached)

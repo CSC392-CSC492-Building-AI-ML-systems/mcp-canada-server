@@ -583,9 +583,9 @@ class TestTorontoToolScenarios:
 
     @pytest.mark.asyncio
     @pytest.mark.timeout(60)
-    @pytest.mark.parametrize("year", [2006, 2011, 2016])
+    @pytest.mark.parametrize("year", [2001, 2006, 2011, 2016])
     async def test_toronto_neighbourhood_profile_years(self, mcp_server, year):
-        """'What was the population of the Annex in 2006, 2011 and 2016?'"""
+        """'What was the population of the Annex in 2001, 2006, 2011 and 2016?'"""
         data = await call_tool(mcp_server, "toronto_get_neighbourhood_profile", {
             "neighbourhood": "95",
             "characteristic": "population",

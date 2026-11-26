@@ -39,6 +39,7 @@ GTFS_DATASET_ID = "ttc-routes-and-schedules"
 # 158-neighbourhood model, read from the named sheet.
 NEIGHBOURHOOD_PROFILES_DATASET_ID = "neighbourhood-profiles"
 NEIGHBOURHOOD_PROFILE_YEARS: dict[int, dict[str, str]] = {
+    2001: {"resource_name": "neighbourhood-profiles-2001-140-model", "label_column": "Attribute"},
     2006: {"resource_name": "neighbourhood-profiles-2006-140-model", "label_column": "Attribute"},
     2011: {"resource_name": "neighbourhood-profiles-2011-140-model", "label_column": "Attribute"},
     2016: {"resource_name": "neighbourhood-profiles-2016-140-model", "label_column": "Characteristic"},
@@ -49,7 +50,7 @@ NEIGHBOURHOOD_PROFILE_YEARS: dict[int, dict[str, str]] = {
     },
 }
 DEFAULT_PROFILE_YEAR = 2016
-# 2006 and 2011 have no "Neighbourhood Number" row; they share 2016's 140 names,
+# 2001, 2006 and 2011 have no "Neighbourhood Number" row; they share 2016's 140 names,
 # so their numbers come from 2016. 2016 and 2021 carry their own numbers.
 PROFILE_NUMBERS_YEAR = 2016
 # Rows per datastore_search page when reading a whole profile table
